@@ -13,7 +13,7 @@ The project currently hosts Big Worm and the main page.
 # Local Installation and Running
 ```
 git clone https://github.com/protoozone/Proto-GHUB.git
-cd games-site
+cd Proto-GHUB/games-site
 npm install
 npm run dev
 ```
