@@ -36,6 +36,13 @@ export default function Home() {
 
         <div class="row">
         <div class="column"><Link to="/games/Big_Worm">Play Big Worm</Link></div>
+        <div class="column"><Link to="/games/Copyright_Free_Chess_TM">Play Copyright Free Chess (tm)</Link></div>
+        <div class="column"><Link to="/games/Flip_A_Coin">Flip A Coin</Link></div>
+        <div class="column"><Link to="/games/Rolling_Dice">Roll Dice</Link></div>
+        </div>
+
+        <div class="row">
+        <div class="column">Coming Soon</div>
         <div class="column">Coming Soon</div>
         <div class="column">Coming Soon</div>
         <div class="column">Coming Soon</div>
