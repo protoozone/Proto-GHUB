@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Big Worm</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0f;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: monospace;
+      color: #ffffff;
+      gap: 12px;
+    }
+
+    #menu {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 32px;
+    }
+
+    #menu h1 {
+      font-size: 28px;
+      color: #00ffff;
+      letter-spacing: 4px;
+    }
+
+    .option-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .option-group label {
+      font-size: 12px;
+      color: #aaaaaa;
+      letter-spacing: 2px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .opt-btn {
+      background: transparent;
+      border: 1px solid #444;
+      color: #aaaaaa;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 8px 16px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: border-color 0.1s, color 0.1s;
+    }
+
+    .opt-btn:hover { border-color: #00ffff; color: #ffffff; }
+    .opt-btn.selected { border-color: #00ffff; color: #00ffff; }
+
+    #start-btn {
+      background: transparent;
+      border: 1px solid #00ffff;
+      color: #00ffff;
+      font-family: monospace;
+      font-size: 15px;
+      padding: 12px 40px;
+      cursor: pointer;
+      letter-spacing: 3px;
+    }
+
+    #start-btn:hover { background: #00ffff; color: #0a0a0f; }
+
+    #hud {
+      display: none;
+      width: 400px;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #score-display {
+      font-size: 14px;
+      letter-spacing: 1px;
+      color: #ffffff;
+    }
+
+    #pause-btn {
+      background: transparent;
+      border: 1px solid #ffffff;
+      color: #ffffff;
+      font-family: monospace;
+      font-size: 12px;
+      padding: 4px 12px;
+      cursor: pointer;
+      letter-spacing: 1px;
+    }
+
+    #pause-btn:hover { border-color: #00ffff; color: #00ffff; }
+
+    #game {
+      display: none;
+      border: 2px solid #00ffff;
+      touch-action: none;
+    }
+
+    #volume-control {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      z-index: 10;
+    }
+
+    #vol-track {
+      position: relative;
+      width: 80px;
+      height: 3px;
+      background: #444;
+      cursor: pointer;
+    }
+
+    #vol-fill {
+      position: absolute;
+      left: 0; top: 0;
+      height: 100%;
+      width: 70%;
+      background: #888;
+      pointer-events: none;
+    }
+
+    #vol-thumb {
+      position: absolute;
+      top: 50%;
+      left: 70%;
+      transform: translate(-50%, -50%);
+      width: 9px;
+      height: 9px;
+      background: #aaaaaa;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="volume-control">
+    <svg id="vol-icon" width="16" height="16" viewBox="0 0 16 16" fill="white">
+      <polygon points="2,5 6,5 10,2 10,14 6,11 2,11"/>
+      <path d="M11.5 5.5 Q13.5 8 11.5 10.5" stroke="white" stroke-width="1.2" fill="none"/>
+      <path d="M13 3.5 Q16 8 13 12.5" stroke="white" stroke-width="1.2" fill="none"/>
+    </svg>
+    <div id="vol-track">
+      <div id="vol-fill"></div>
+      <div id="vol-thumb"></div>
+    </div>
+  </div>
+
+  <div id="menu">
+    <button onclick="window.history.back()">
+      Back to Hub
+    </button>
+    <h1>BIG WORM</h1>
+    <div class="option-group">
+      <label>SIZE</label>
+      <div class="btn-row">
+        <button class="opt-btn" data-group="size" data-value="5">5×5</button>
+        <button class="opt-btn" data-group="size" data-value="10">10×10</button>
+        <button class="opt-btn selected" data-group="size" data-value="20">20×20</button>
+        <button class="opt-btn" data-group="size" data-value="60">60×60</button>
+      </div>
+    </div>
+    <div class="option-group">
+      <label>DIFFICULTY</label>
+      <div class="btn-row">
+        <button class="opt-btn selected" data-group="diff" data-value="random">RANDOM</button>
+        <button class="opt-btn" data-group="diff" data-value="central">CENTRAL</button>
+        <button class="opt-btn" data-group="diff" data-value="edge">EDGE</button>
+      </div>
+    </div>
+    <button id="start-btn">START</button>
+  </div>
+
+  <div id="hud">
+    <span id="score-display">SCORE: 0</span>
+    <button id="pause-btn">PAUSE</button>
+  </div>
+
+  <canvas id="game"></canvas>
+
+  <script src="/midi_player.js"></script>
+  <script src="/games/Big_Worm/game.js"></script>
+</body>
+</html>
