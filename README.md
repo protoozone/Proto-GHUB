@@ -11,16 +11,23 @@ The game router is in data under games.js, and the midi player is in public.
 The project currently hosts Big Worm and the main page. 
 
 # Local Installation and Running
-git clone [repo link]
+git clone https://github.com/protoozone/Proto-GHUB.git
+
 cd games-site
+
 npm install
+
 npm run dev
 
 # Self-Hosting
 npm run build
+
 npx serve dist
+
 (or) 
+
 Vercel
+
 (or anything else you're comfortable using)
 
 # Roadmap
