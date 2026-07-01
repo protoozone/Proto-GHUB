@@ -9,8 +9,8 @@
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const PLAYER_COLORS = [
-  '#c0392b','#2980b9','#27ae60','#f39c12',
-  '#8e44ad','#16a085','#e67e22','#2c3e50',
+  '#ffffff','#2980b9','#27ae60','#f39c12',
+  '#8e44ad','#2c3e50','#c0392b','#000000',
 ]
 const LIGHT_SQ = '#f0d9b5'
 const DARK_SQ  = '#b58863'
@@ -234,10 +234,10 @@ function render4P(ctx,board,W,H){
   }
   renderGrid(ctx,board,ox,oy,sq,SIZE,SIZE,isValid)
   const MID=ox+bw/2
-  drawPlayerLabel(ctx,MID,oy+bw+14,'Red',PLAYER_COLORS[0],'top')
-  drawPlayerLabel(ctx,MID,oy-14,'Yellow',PLAYER_COLORS[3],'bottom')
-  drawPlayerLabel(ctx,ox-14,oy+bw/2,'Blue',PLAYER_COLORS[1],'right')
-  drawPlayerLabel(ctx,ox+bw+14,oy+bw/2,'Green',PLAYER_COLORS[2],'left')
+  drawPlayerLabel(ctx,MID,oy+bw+14,'P1',PLAYER_COLORS[0],'top')
+  drawPlayerLabel(ctx,MID,oy-14,'P3',PLAYER_COLORS[3],'bottom')
+  drawPlayerLabel(ctx,ox-14,oy+bw/2,'P2',PLAYER_COLORS[1],'right')
+  drawPlayerLabel(ctx,ox+bw+14,oy+bw/2,'P4',PLAYER_COLORS[2],'left')
 }
 
 function render3P(ctx,board,W,H){
@@ -409,6 +409,1384 @@ export function renderBoard(canvas,board,playerCount){
     case '6p': render6P(ctx,board,W,H);break
     case '8p': render8P(ctx,board,W,H);break
     case '16p':render16P(ctx,board,W,H);break
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TWO-PLAYER CHESS GAME ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Standard 8×8 coordinate helpers ─────────────────────────────────────────
+// Square IDs are "col:row" strings where col 0–7 = a–h, row 0–7 = rank 1–8
+
+function sq2id(col, row) { return `0:${col}:${row}` }
+function sq2col(id) { return parseInt(id.split(':')[1]) }
+function sq2row(id) { return parseInt(id.split(':')[2]) }
+function sq2valid(col, row) { return col >= 0 && col < 8 && row >= 0 && row < 8 }
+
+function sq2adjacent(id) {
+  const col = sq2col(id), row = sq2row(id)
+  const res = {}
+  const dirs = { N:[0,1],S:[0,-1],E:[1,0],W:[-1,0],NE:[1,1],NW:[-1,1],SE:[1,-1],SW:[-1,-1] }
+  for (const [d, [dc, dr]] of Object.entries(dirs)) {
+    const nc = col+dc, nr = row+dr
+    res[d] = sq2valid(nc, nr) ? sq2id(nc, nr) : null
+  }
+  return res
+}
+
+function sq2rookMoves(id, occ) {
+  const col = sq2col(id), row = sq2row(id), r = new Set()
+  for (const [dc, dr] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+    let c = col+dc, rw = row+dr
+    while (sq2valid(c, rw)) { r.add(sq2id(c,rw)); if (occ(sq2id(c,rw))) break; c+=dc; rw+=dr }
+  }
+  return r
+}
+function sq2bishopMoves(id, occ) {
+  const col = sq2col(id), row = sq2row(id), r = new Set()
+  for (const [dc, dr] of [[1,1],[1,-1],[-1,1],[-1,-1]]) {
+    let c = col+dc, rw = row+dr
+    while (sq2valid(c, rw)) { r.add(sq2id(c,rw)); if (occ(sq2id(c,rw))) break; c+=dc; rw+=dr }
+  }
+  return r
+}
+function sq2queenMoves(id, occ) { return new Set([...sq2rookMoves(id,occ),...sq2bishopMoves(id,occ)]) }
+function sq2kingMoves(id) {
+  const col = sq2col(id), row = sq2row(id), r = new Set()
+  for (const [dc, dr] of [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+    const nc = col+dc, nr = row+dr
+    if (sq2valid(nc, nr)) r.add(sq2id(nc, nr))
+  }
+  return r
+}
+function sq2knightMoves(id) {
+  const col = sq2col(id), row = sq2row(id), r = new Set()
+  for (const [dc, dr] of [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]]) {
+    const nc = col+dc, nr = row+dr
+    if (sq2valid(nc, nr)) r.add(sq2id(nc, nr))
+  }
+  return r
+}
+
+// ── Standard pawn logic ───────────────────────────────────────────────────────
+function sq2pawnMoves(id, player, board, enPassant) {
+  const col = sq2col(id), row = sq2row(id)
+  const dir    = player === 'white' ? 1 : -1
+  const startR = player === 'white' ? 1 : 6
+  const promoR = player === 'white' ? 7 : 0
+  const moves = [], captures = []
+  let epCapture = null
+
+  // Forward
+  const fwd1 = sq2valid(col, row+dir) ? sq2id(col, row+dir) : null
+  if (fwd1 && !board.has(fwd1)) {
+    moves.push(fwd1)
+    if (row === startR) {
+      const fwd2 = sq2id(col, row+dir*2)
+      if (!board.has(fwd2)) moves.push(fwd2)
+    }
+  }
+
+  // Diagonal captures
+  for (const dc of [-1, 1]) {
+    const nc = col+dc, nr = row+dir
+    if (!sq2valid(nc, nr)) continue
+    const tgt = sq2id(nc, nr)
+    const occ = board.get(tgt)
+    if (occ && occ.player !== player) captures.push(tgt)
+    // En passant
+    if (enPassant && enPassant.player !== player) {
+      if (enPassant.pawnCell === sq2id(nc, row) && enPassant.skippedCell === tgt && !board.has(tgt)) {
+        captures.push(tgt)
+        epCapture = { to: tgt, capturedCell: enPassant.pawnCell }
+      }
+    }
+  }
+
+  return { moves, captures, epCapture }
+}
+
+function sq2isPromotion(id, player) {
+  const row = sq2row(id)
+  return (player === 'white' && row === 7) || (player === 'black' && row === 0)
+}
+
+// Pixel coords for the 8×8 board rendered inside the game canvas.
+// We'll compute them dynamically at render time from canvas size.
+const SQ2_COLS = 8, SQ2_ROWS = 8
+
+export class TwoPlayerGame {
+  constructor(canvas, hudEl, opts = {}) {
+    this.canvas = canvas
+    this.ctx    = canvas.getContext('2d')
+    this.hudEl  = hudEl
+    this.showCoords     = false
+    this.stalemateMode  = opts.stalemateMode ?? 'draw'
+    this.enPassantEnabled = opts.enPassant ?? true
+
+    this._onResize = () => { this._sized(); this.render() }
+    this._onClick  = e => {
+      const rect = canvas.getBoundingClientRect()
+      const px = (e.clientX - rect.left) * (canvas.width / rect.width)
+      const py = (e.clientY - rect.top)  * (canvas.height / rect.height)
+      this._handleClick(this._nearestCell(px, py))
+    }
+    window.addEventListener('resize', this._onResize)
+    canvas.addEventListener('click', this._onClick)
+
+    this._sized()
+    this.reset()
+  }
+
+  destroy() {
+    window.removeEventListener('resize', this._onResize)
+    this.canvas.removeEventListener('click', this._onClick)
+  }
+
+  _sized() {
+    const wrap = this.canvas.parentElement
+    const rect = wrap ? wrap.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
+    const S = Math.max(200, Math.min(rect.width, rect.height) - 8)
+    this.canvas.width = this.canvas.height = S
+    this.S  = S
+    // Board occupies 90% of canvas, centred
+    this.sqSize = Math.floor(S * 0.9 / 8)
+    this.ox = Math.floor((S - this.sqSize * 8) / 2)
+    this.oy = Math.floor((S - this.sqSize * 8) / 2)
+  }
+
+  _cellToXY(id) {
+    const col = sq2col(id), row = sq2row(id)
+    return [
+      this.ox + col * this.sqSize + this.sqSize / 2,
+      this.oy + (7 - row) * this.sqSize + this.sqSize / 2,
+    ]
+  }
+
+  _nearestCell(px, py) {
+    const col = Math.floor((px - this.ox) / this.sqSize)
+    const row = 7 - Math.floor((py - this.oy) / this.sqSize)
+    if (!sq2valid(col, row)) return null
+    return sq2id(col, row)
+  }
+
+  reset() {
+    this.board           = new Map()
+    this.selected        = null
+    this.validMoves      = []
+    this.validCaptures   = []
+    this.validCastles    = []
+    this.validEpCapture  = null
+    this.currentPlayer   = 'white'
+    this.winner          = null
+    this.gameOver        = false
+    this.gameOverReason  = null
+    this.checkAttackers  = []
+    this.pendingPromotion = null
+    this.enPassant       = null
+
+    // White pieces (row 0 = rank 1)
+    const backRow = ['R','N','B','Q','K','B','N','R']
+    backRow.forEach((t, col) => {
+      this.board.set(sq2id(col, 0), { player:'white', type:t, hasMoved:false })
+      this.board.set(sq2id(col, 1), { player:'white', type:'P', hasMoved:false })
+    })
+    // Black pieces (row 7 = rank 8)
+    const backRowB = ['R','N','B','Q','K','B','N','R']
+    backRowB.forEach((t, col) => {
+      this.board.set(sq2id(col, 7), { player:'black', type:t, hasMoved:false })
+      this.board.set(sq2id(col, 6), { player:'black', type:'P', hasMoved:false })
+    })
+
+    this._updateCheckStatus()
+    this._updateHUD()
+    this.render()
+  }
+
+  // ── Attack / check helpers ───────────────────────────────────────────────────
+  _attackersOf(targetCell, byPlayer, board) {
+    const occ = id => board.has(id)
+    const attackers = []
+    for (const [id, piece] of board) {
+      if (piece.player !== byPlayer) continue
+      let attacks = new Set()
+      if (piece.type === 'K') attacks = sq2kingMoves(id)
+      else if (piece.type === 'N') attacks = sq2knightMoves(id)
+      else if (piece.type === 'R') attacks = sq2rookMoves(id, occ)
+      else if (piece.type === 'B') attacks = sq2bishopMoves(id, occ)
+      else if (piece.type === 'Q') attacks = sq2queenMoves(id, occ)
+      else if (piece.type === 'P') {
+        const fakeBoard = new Map(board)
+        if (!fakeBoard.has(targetCell)) fakeBoard.set(targetCell, { player:'__dummy__', type:'P' })
+        const pm = sq2pawnMoves(id, piece.player, fakeBoard, null)
+        pm.captures.forEach(c => attacks.add(c))
+      }
+      if (attacks.has(targetCell)) attackers.push(id)
+    }
+    return attackers
+  }
+
+  _isInCheck(player, board) {
+    let kingCell = null
+    for (const [id, piece] of board) {
+      if (piece.player === player && piece.type === 'K') { kingCell = id; break }
+    }
+    if (!kingCell) return false
+    const opp = player === 'white' ? 'black' : 'white'
+    return this._attackersOf(kingCell, opp, board).length > 0
+  }
+
+  _updateCheckStatus() {
+    this.checkAttackers = []
+    for (const [id, piece] of this.board) {
+      if (piece.type !== 'K') continue
+      const opp = piece.player === 'white' ? 'black' : 'white'
+      const attackers = this._attackersOf(id, opp, this.board)
+      if (attackers.length > 0) this.checkAttackers.push({ king: id, by: attackers })
+    }
+  }
+
+  // ── Move generation ───────────────────────────────────────────────────────────
+  _getRawMoves(cellId, board) {
+    const piece = board.get(cellId)
+    if (!piece) return { moves:[], captures:[], epCapture:null }
+    const occ = id => board.has(id)
+    let moves = [], captures = [], epCapture = null
+
+    if (piece.type === 'P') {
+      const ep = this.enPassantEnabled ? this.enPassant : null
+      const r = sq2pawnMoves(cellId, piece.player, board, ep)
+      moves = r.moves; captures = r.captures; epCapture = r.epCapture
+    } else {
+      let raw = new Set()
+      if (piece.type === 'K') raw = sq2kingMoves(cellId)
+      else if (piece.type === 'R') raw = sq2rookMoves(cellId, occ)
+      else if (piece.type === 'B') raw = sq2bishopMoves(cellId, occ)
+      else if (piece.type === 'Q') raw = sq2queenMoves(cellId, occ)
+      else if (piece.type === 'N') raw = sq2knightMoves(cellId)
+      raw.forEach(id => {
+        const o = board.get(id)
+        if (!o) moves.push(id)
+        else if (o.player !== piece.player) captures.push(id)
+      })
+    }
+    return { moves, captures, epCapture }
+  }
+
+  _getCastleMoves(cellId) {
+    const piece = this.board.get(cellId)
+    if (!piece || piece.type !== 'K' || piece.hasMoved) return []
+    const row = sq2row(cellId)
+    const castles = []
+
+    // Kingside
+    const ksRookId = sq2id(7, row)
+    const ksRook = this.board.get(ksRookId)
+    if (ksRook && ksRook.type === 'R' && ksRook.player === piece.player && !ksRook.hasMoved) {
+      const between = [sq2id(5,row), sq2id(6,row)]
+      if (between.every(id => !this.board.has(id))) {
+        const crossed = [sq2id(5,row), sq2id(6,row)]
+        let ok = true
+        for (const sq of [cellId, ...crossed]) {
+          const sim = new Map(this.board); sim.delete(cellId); sim.set(sq, {...piece, hasMoved:true})
+          if (this._isInCheck(piece.player, sim)) { ok = false; break }
+        }
+        if (ok) castles.push({ kingDest: sq2id(6,row), rookFrom: ksRookId, rookDest: sq2id(5,row), side:'kingside' })
+      }
+    }
+
+    // Queenside
+    const qsRookId = sq2id(0, row)
+    const qsRook = this.board.get(qsRookId)
+    if (qsRook && qsRook.type === 'R' && qsRook.player === piece.player && !qsRook.hasMoved) {
+      const between = [sq2id(1,row), sq2id(2,row), sq2id(3,row)]
+      if (between.every(id => !this.board.has(id))) {
+        const crossed = [sq2id(3,row), sq2id(2,row)]
+        let ok = true
+        for (const sq of [cellId, ...crossed]) {
+          const sim = new Map(this.board); sim.delete(cellId); sim.set(sq, {...piece, hasMoved:true})
+          if (this._isInCheck(piece.player, sim)) { ok = false; break }
+        }
+        if (ok) castles.push({ kingDest: sq2id(2,row), rookFrom: qsRookId, rookDest: sq2id(3,row), side:'queenside' })
+      }
+    }
+
+    return castles
+  }
+
+  _getLegalMoves(cellId) {
+    const piece = this.board.get(cellId)
+    if (!piece) return { moves:[], captures:[], castles:[], epCapture:null }
+
+    const raw     = this._getRawMoves(cellId, this.board)
+    const castles = piece.type === 'K' ? this._getCastleMoves(cellId) : []
+
+    const simulateMove = to => {
+      const sim = new Map(this.board)
+      sim.delete(cellId)
+      if (raw.epCapture && raw.epCapture.to === to) sim.delete(raw.epCapture.capturedCell)
+      sim.set(to, { ...piece, hasMoved: true })
+      return sim
+    }
+
+    const filterArr = arr => arr.filter(to => !this._isInCheck(piece.player, simulateMove(to)))
+    const filteredCaptures = filterArr(raw.captures)
+    const epCapture = (raw.epCapture && filteredCaptures.includes(raw.epCapture.to)) ? raw.epCapture : null
+
+    return { moves: filterArr(raw.moves), captures: filteredCaptures, castles, epCapture }
+  }
+
+  _hasAnyLegalMove(player) {
+    for (const [id, piece] of this.board) {
+      if (piece.player !== player) continue
+      const { moves, captures, castles } = this._getLegalMoves(id)
+      if (moves.length > 0 || captures.length > 0 || castles.length > 0) return true
+    }
+    return false
+  }
+
+  // ── Click / select / execute ─────────────────────────────────────────────────
+  _handleClick(cellId) {
+    if (this.gameOver || this.pendingPromotion) return
+    if (!cellId) { this._deselect(); return }
+
+    if (this.selected) {
+      if (this.validMoves.includes(cellId) || this.validCaptures.includes(cellId)) {
+        this._executeMove(this.selected, cellId); return
+      }
+      const castle = this.validCastles?.find(c => c.kingDest === cellId)
+      if (castle) { this._executeCastle(this.selected, castle); return }
+      const p = this.board.get(cellId)
+      if (p && p.player === this.currentPlayer) { this._selectCell(cellId); return }
+      this._deselect(); return
+    }
+
+    const p = this.board.get(cellId)
+    if (p && p.player === this.currentPlayer) this._selectCell(cellId)
+  }
+
+  _deselect() {
+    this.selected = null; this.validMoves = []; this.validCaptures = []; this.validCastles = []; this.validEpCapture = null
+    this.render()
+  }
+
+  _selectCell(cellId) {
+    this.selected = cellId
+    const r = this._getLegalMoves(cellId)
+    this.validMoves = r.moves; this.validCaptures = r.captures; this.validCastles = r.castles || []
+    this.validEpCapture = r.epCapture || null
+    this.render()
+  }
+
+  _executeCastle(kingFrom, castle) {
+    const king = this.board.get(kingFrom)
+    const rook = this.board.get(castle.rookFrom)
+    this.board.delete(kingFrom); this.board.delete(castle.rookFrom)
+    this.board.set(castle.kingDest, { ...king, hasMoved:true })
+    this.board.set(castle.rookDest, { ...rook, hasMoved:true })
+    this.selected = null; this.validMoves = []; this.validCaptures = []; this.validCastles = []; this.validEpCapture = null
+    this.enPassant = null
+    this._finishTurn()
+  }
+
+  _executeMove(from, to) {
+    const piece = this.board.get(from)
+    const isEP  = !!(this.validEpCapture && this.validEpCapture.to === to)
+
+    let nextEnPassant = null
+    if (piece.type === 'P') {
+      const dir = piece.player === 'white' ? 1 : -1
+      if (sq2row(to) === sq2row(from) + dir * 2) {
+        nextEnPassant = { pawnCell: to, skippedCell: sq2id(sq2col(from), sq2row(from)+dir), player: piece.player }
+      }
+    }
+
+    this.board.delete(from)
+    if (isEP) this.board.delete(this.validEpCapture.capturedCell)
+    this.board.set(to, { ...piece, hasMoved:true })
+
+    this.selected = null; this.validMoves = []; this.validCaptures = []; this.validCastles = []; this.validEpCapture = null
+    this.enPassant = this.enPassantEnabled ? nextEnPassant : null
+
+    if (piece.type === 'P' && sq2isPromotion(to, piece.player)) {
+      this.pendingPromotion = { from, to, player: piece.player }
+      this._updateCheckStatus()
+      this._updateHUD(); this.render()
+      this._showPromotionPicker(to, piece.player)
+      return
+    }
+
+    this._finishTurn()
+  }
+
+  choosePromotion(type) {
+    if (!this.pendingPromotion) return
+    const { to, player } = this.pendingPromotion
+    this.board.set(to, { player, type, hasMoved:true })
+    this.pendingPromotion = null
+    this._hidePromotionPicker()
+    this._finishTurn()
+  }
+
+  _finishTurn() {
+    this.currentPlayer = this.currentPlayer === 'white' ? 'black' : 'white'
+    this._updateCheckStatus()
+
+    const inCheck = this.checkAttackers.some(c => {
+      const kp = this.board.get(c.king); return kp && kp.player === this.currentPlayer
+    })
+    const hasMove = this._hasAnyLegalMove(this.currentPlayer)
+
+    if (!hasMove) {
+      this.gameOver = true
+      if (inCheck) {
+        this.winner         = this.currentPlayer === 'white' ? 'black' : 'white'
+        this.gameOverReason = 'checkmate'
+      } else {
+        this.gameOverReason = 'stalemate'
+        this.winner = this.stalemateMode === 'loss'
+          ? (this.currentPlayer === 'white' ? 'black' : 'white')
+          : null
+      }
+    }
+
+    this._updateHUD()
+    this.render()
+  }
+
+  _showPromotionPicker(cell, player) {
+    this.canvas.dispatchEvent(new CustomEvent('promotion', { detail:{ cell, player }, bubbles:true }))
+  }
+  _hidePromotionPicker() {
+    this.canvas.dispatchEvent(new CustomEvent('promotionDone', { bubbles:true }))
+  }
+
+  // ── HUD ──────────────────────────────────────────────────────────────────────
+  _updateHUD() {
+    if (!this.hudEl) return
+    const PCOLORS = { white:'#f0f0f0', black:'#222222' }
+    const PTXT    = { white:'#111111', black:'#ffffff' }
+    const PNAMES  = { white:'White', black:'Black' }
+
+    if (this.gameOver) {
+      if (this.gameOverReason === 'stalemate' && this.winner === null) {
+        this.hudEl.badge.textContent = 'Draw'
+        this.hudEl.badge.style.background = '#555'
+        this.hudEl.badge.style.color = '#fff'
+        this.hudEl.status.textContent = 'Stalemate (no legal moves)'
+      } else if (this.winner) {
+        const reason = this.gameOverReason === 'checkmate' ? 'Checkmate' : 'Stalemate'
+        this.hudEl.badge.textContent = `${PNAMES[this.winner]} wins! 👑`
+        this.hudEl.badge.style.background = PCOLORS[this.winner]
+        this.hudEl.badge.style.color = PTXT[this.winner]
+        this.hudEl.status.textContent = reason
+      }
+    } else if (this.pendingPromotion) {
+      const p = this.pendingPromotion.player
+      this.hudEl.badge.textContent = PNAMES[p]
+      this.hudEl.badge.style.background = PCOLORS[p]
+      this.hudEl.badge.style.color = PTXT[p]
+      this.hudEl.status.textContent = 'Choose promotion piece'
+    } else {
+      const inCheckNow = this.checkAttackers.some(c => {
+        const kp = this.board.get(c.king); return kp && kp.player === this.currentPlayer
+      })
+      this.hudEl.badge.textContent = PNAMES[this.currentPlayer]
+      this.hudEl.badge.style.background = PCOLORS[this.currentPlayer]
+      this.hudEl.badge.style.color = PTXT[this.currentPlayer]
+      this.hudEl.status.textContent = inCheckNow ? 'Check!' : ''
+    }
+  }
+
+  toggleCoords()        { this.showCoords = !this.showCoords; this.render() }
+  setStalemateMode(m)   { this.stalemateMode = m }
+  setEnPassantEnabled(e){ this.enPassantEnabled = e; if (!e) this.enPassant = null; if (this.selected) this._selectCell(this.selected) }
+
+  // ── Rendering ────────────────────────────────────────────────────────────────
+  render() {
+    this._drawBoard()
+    this._drawHighlights()
+    this._drawPieces()
+    this._drawCheckIndicators()
+    if (this.showCoords) this._drawCoords()
+    if (this.gameOver)   this._drawEndOverlay()
+  }
+
+  _drawBoard() {
+    const { ctx, S, ox, oy, sqSize } = this
+    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, S, S)
+
+    for (let col = 0; col < 8; col++) {
+      for (let row = 0; row < 8; row++) {
+        const x = ox + col * sqSize, y = oy + (7 - row) * sqSize
+        ctx.fillStyle = (col + row) % 2 === 0 ? DARK_SQ : LIGHT_SQ
+        ctx.fillRect(x, y, sqSize, sqSize)
+        ctx.strokeStyle = BORDER; ctx.lineWidth = 0.5; ctx.strokeRect(x, y, sqSize, sqSize)
+      }
+    }
+
+    // Rank / file labels
+    const fs = Math.max(9, Math.round(sqSize * 0.18))
+    ctx.font = `bold ${fs}px monospace`
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    for (let col = 0; col < 8; col++) {
+      ctx.fillStyle = col % 2 === 0 ? LIGHT_SQ : DARK_SQ
+      ctx.fillText(String.fromCharCode(97 + col), ox + col * sqSize + 3, oy + 8 * sqSize - fs - 2)
+    }
+    ctx.textAlign = 'right'; ctx.textBaseline = 'top'
+    for (let row = 0; row < 8; row++) {
+      ctx.fillStyle = row % 2 === 0 ? DARK_SQ : LIGHT_SQ
+      ctx.fillText(row + 1, ox + sqSize - 3, oy + (7 - row) * sqSize + 3)
+    }
+
+    // Territory labels outside board
+    const lfs = Math.max(10, Math.round(sqSize * 0.22))
+    ctx.font = `bold ${lfs}px system-ui`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#f0f0f0'
+    ctx.fillText('White', ox + sqSize * 4, oy + 8 * sqSize + (S - oy - 8 * sqSize) / 2)
+    ctx.fillStyle = '#888'
+    ctx.fillText('Black', ox + sqSize * 4, oy / 2)
+  }
+
+  _drawHighlights() {
+    const { ctx, sqSize } = this
+    const pr = sqSize * 0.15
+
+    if (this.selected) {
+      const [x, y] = this._cellToXY(this.selected)
+      ctx.beginPath(); ctx.arc(x, y, sqSize * 0.44, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,210,0,.45)'; ctx.fill()
+    }
+    this.validMoves.forEach(id => {
+      const [x, y] = this._cellToXY(id)
+      ctx.beginPath(); ctx.arc(x, y, pr, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(60,200,60,.75)'; ctx.fill()
+    })
+    this.validCaptures.forEach(id => {
+      const [x, y] = this._cellToXY(id)
+      ctx.beginPath(); ctx.arc(x, y, sqSize * 0.42, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(220,40,40,.9)'; ctx.lineWidth = 2.5; ctx.stroke()
+    })
+    if (this.validEpCapture) {
+      const [x, y] = this._cellToXY(this.validEpCapture.to)
+      ctx.beginPath(); ctx.arc(x, y, sqSize * 0.28, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(180,80,255,.9)'; ctx.lineWidth = 1.8; ctx.stroke()
+    }
+    ;(this.validCastles || []).forEach(c => {
+      const [x, y] = this._cellToXY(c.kingDest)
+      ctx.beginPath(); ctx.arc(x, y, pr, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(120,160,255,.75)'; ctx.fill()
+    })
+  }
+
+  _drawCheckIndicators() {
+    const { ctx, sqSize } = this
+    if (!this.checkAttackers || this.checkAttackers.length === 0) return
+    const seen = new Set()
+    for (const entry of this.checkAttackers) {
+      for (const attackerId of entry.by) {
+        if (seen.has(attackerId)) continue; seen.add(attackerId)
+        const [x, y] = this._cellToXY(attackerId)
+        ctx.beginPath(); ctx.arc(x, y, sqSize * 0.43, 0, Math.PI * 2)
+        ctx.strokeStyle = '#ff2d2d'; ctx.lineWidth = 2.2
+        ctx.shadowColor = '#ff2d2d'; ctx.shadowBlur = 6; ctx.stroke(); ctx.shadowBlur = 0
+      }
+      if (entry.king) {
+        const [kx, ky] = this._cellToXY(entry.king)
+        ctx.beginPath(); ctx.arc(kx, ky, sqSize * 0.46, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(255,45,45,0.55)'; ctx.lineWidth = 1.6; ctx.stroke()
+      }
+    }
+  }
+
+  _drawPieces() {
+    const { ctx, sqSize } = this
+    const pr = sqSize * 0.38
+    const fs = Math.round(sqSize * 0.52)
+    const SYMS = {K:{l:'♔',d:'♚'},Q:{l:'♕',d:'♛'},R:{l:'♖',d:'♜'},B:{l:'♗',d:'♝'},N:{l:'♘',d:'♞'},P:{l:'♙',d:'♟'}}
+    const PCOLORS = { white:'#f0e8d0', black:'#222' }
+    const PTXT    = { white:'#111',    black:'#eee' }
+
+    this.board.forEach((piece, id) => {
+      const [x, y] = this._cellToXY(id)
+      ctx.beginPath(); ctx.arc(x, y, pr, 0, Math.PI * 2)
+      ctx.fillStyle = PCOLORS[piece.player]; ctx.fill()
+      ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 1; ctx.stroke()
+      ctx.font = `${fs}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillStyle = PTXT[piece.player]
+      const sym = SYMS[piece.type]?.[piece.player === 'white' ? 'l' : 'd'] ?? '?'
+      ctx.fillText(sym, x, y + 1)
+    })
+  }
+
+  _drawCoords() {
+    const { ctx, sqSize } = this
+    const fs = Math.max(9, Math.round(sqSize * 0.18))
+    ctx.font = `${fs}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    this.board.forEach((_, id) => {
+      const [x, y] = this._cellToXY(id)
+      const ly = y - sqSize * 0.32
+      const tw = ctx.measureText(id).width
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'
+      ctx.beginPath(); ctx.roundRect(x - tw/2 - 2, ly - fs/2 - 1, tw + 4, fs + 2, 2); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.fillText(id, x, ly)
+    })
+  }
+
+  _drawEndOverlay() {
+    const { ctx, S, winner, gameOverReason } = this
+    const PCOLORS = { white:'#f0e8d0', black:'#333' }
+    const PNAMES  = { white:'White', black:'Black' }
+
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, S, S)
+
+    const bw = S * 0.58, bh = S * 0.14
+    const bx = (S - bw) / 2, by = (S - bh) / 2
+    ctx.fillStyle = '#1a1a2e'
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 12); ctx.fill()
+
+    const isDraw = gameOverReason === 'stalemate' && winner === null
+    ctx.strokeStyle = isDraw ? '#888' : (winner === 'white' ? '#f0e8d0' : '#888')
+    ctx.lineWidth = 2; ctx.stroke()
+
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.font = `bold ${Math.round(S * 0.042)}px system-ui`
+
+    if (isDraw) {
+      ctx.fillStyle = '#ccc'
+      ctx.fillText('Stalemate — Draw', S/2, by + bh * 0.38)
+    } else {
+      ctx.fillStyle = winner === 'white' ? '#f0e8d0' : '#aaa'
+      const headline = gameOverReason === 'checkmate' ? `${PNAMES[winner]} wins! Checkmate 👑`
+                     : `${PNAMES[winner]} wins! 👑`
+      ctx.fillText(headline, S/2, by + bh * 0.38)
+    }
+
+    ctx.font = `${Math.round(S * 0.021)}px system-ui`
+    ctx.fillStyle = '#aaa'
+    const sub = gameOverReason === 'checkmate' ? 'No legal moves (king in check)'
+              : 'No legal moves (king not in check)'
+    ctx.fillText(`${sub} · Press Reset to play again`, S/2, by + bh * 0.72)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// FOUR-PLAYER CHESS GAME ENGINE  (14×14 cut-corners board)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── 14×14 coordinate helpers ─────────────────────────────────────────────────
+// Square IDs: "0:col:row"  col 0–13, row 0–13  (cut corners at c<3&&r<3 etc.)
+const SQ4_SIZE = 14, SQ4_CUT = 3
+
+function sq4id(col, row) { return `0:${col}:${row}` }
+function sq4col(id) { return parseInt(id.split(':')[1]) }
+function sq4row(id) { return parseInt(id.split(':')[2]) }
+function sq4valid(col, row) {
+  if (col < 0 || col >= SQ4_SIZE || row < 0 || row >= SQ4_SIZE) return false
+  if (col < SQ4_CUT && row < SQ4_CUT) return false
+  if (col < SQ4_CUT && row >= SQ4_SIZE - SQ4_CUT) return false
+  if (col >= SQ4_SIZE - SQ4_CUT && row < SQ4_CUT) return false
+  if (col >= SQ4_SIZE - SQ4_CUT && row >= SQ4_SIZE - SQ4_CUT) return false
+  return true
+}
+
+function sq4rookMoves(id, occ) {
+  const col = sq4col(id), row = sq4row(id), r = new Set()
+  for (const [dc, dr] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+    let c = col+dc, rw = row+dr
+    while (sq4valid(c,rw)) { r.add(sq4id(c,rw)); if(occ(sq4id(c,rw)))break; c+=dc; rw+=dr }
+  }
+  return r
+}
+function sq4bishopMoves(id, occ) {
+  const col = sq4col(id), row = sq4row(id), r = new Set()
+  for (const [dc, dr] of [[1,1],[1,-1],[-1,1],[-1,-1]]) {
+    let c = col+dc, rw = row+dr
+    while (sq4valid(c,rw)) { r.add(sq4id(c,rw)); if(occ(sq4id(c,rw)))break; c+=dc; rw+=dr }
+  }
+  return r
+}
+function sq4queenMoves(id, occ) { return new Set([...sq4rookMoves(id,occ),...sq4bishopMoves(id,occ)]) }
+function sq4kingMoves(id) {
+  const col = sq4col(id), row = sq4row(id), r = new Set()
+  for (const [dc, dr] of [[0,1],[0,-1],[1,0],[-1,0],[1,1],[1,-1],[-1,1],[-1,-1]]) {
+    if (sq4valid(col+dc, row+dr)) r.add(sq4id(col+dc, row+dr))
+  }
+  return r
+}
+function sq4knightMoves(id) {
+  const col = sq4col(id), row = sq4row(id), r = new Set()
+  for (const [dc, dr] of [[2,1],[2,-1],[-2,1],[-2,-1],[1,2],[1,-2],[-1,2],[-1,-2]]) {
+    if (sq4valid(col+dc, row+dr)) r.add(sq4id(col+dc, row+dr))
+  }
+  return r
+}
+
+// ── 4P Pawn movement ─────────────────────────────────────────────────────────
+// Each player's pawns march toward the opposite side:
+//   red    (bottom, row 0):  moves north (+row), promotes at row 13
+//   blue   (left, col 0):    moves east  (+col), promotes at col 13
+//   yellow (top, row 13):    moves south (-row), promotes at row 0
+//   green  (right, col 13):  moves west  (-col), promotes at col 0
+//
+// Starting rows/cols: red row 3, blue col 3, yellow row 10, green col 10
+
+function sq4pawnDirection(player) {
+  return { red:[0,1], blue:[1,0], yellow:[0,-1], green:[-1,0] }[player]
+}
+
+function sq4pawnMoves(id, player, board, enPassant) {
+  const col = sq4col(id), row = sq4row(id)
+  const [dc, dr] = sq4pawnDirection(player)
+  const moves = [], captures = []
+  let epCapture = null
+
+  // Starting rank/file
+  const isStart =
+    (player === 'red'    && row === 3)  ||
+    (player === 'blue'   && col === 3)  ||
+    (player === 'yellow' && row === 10) ||
+    (player === 'green'  && col === 10)
+
+  const fwd1id = sq4valid(col+dc, row+dr) ? sq4id(col+dc, row+dr) : null
+  if (fwd1id && !board.has(fwd1id)) {
+    moves.push(fwd1id)
+    if (isStart) {
+      const fwd2id = sq4valid(col+dc*2, row+dr*2) ? sq4id(col+dc*2, row+dr*2) : null
+      if (fwd2id && !board.has(fwd2id)) moves.push(fwd2id)
+    }
+  }
+
+  // Diagonal captures (perpendicular to march direction)
+  // dc=0,dr=1 → diagonals at (±1, 1)
+  // dc=1,dr=0 → diagonals at (1, ±1)
+  const diagonals = dr === 0
+    ? [[dc,  1], [dc, -1]]   // horizontal march: capture forward-up and forward-down
+    : [[1,  dr], [-1, dr]]   // vertical march: capture forward-left and forward-right
+
+  for (const [ddc, ddr] of diagonals) {
+    const nc = col+ddc, nr = row+ddr
+    if (!sq4valid(nc, nr)) continue
+    const tgt = sq4id(nc, nr)
+    const occ = board.get(tgt)
+    if (occ && occ.player !== player) captures.push(tgt)
+
+    // En passant
+    if (enPassant && enPassant.player !== player) {
+      const adjCol = col+ddc - dc, adjRow = row+ddr - dr
+      if (sq4valid(adjCol, adjRow)) {
+        const pawnHere = sq4id(adjCol, adjRow)
+        if (enPassant.pawnCell === pawnHere && enPassant.skippedCell === tgt && !board.has(tgt)) {
+          captures.push(tgt)
+          epCapture = { to: tgt, capturedCell: pawnHere }
+        }
+      }
+    }
+  }
+
+  return { moves, captures, epCapture }
+}
+
+function sq4isPromotion(id, player) {
+  const col = sq4col(id), row = sq4row(id)
+  return (player === 'red' && row === SQ4_SIZE - 1) ||
+         (player === 'blue' && col === SQ4_SIZE - 1) ||
+         (player === 'yellow' && row === 0) ||
+         (player === 'green' && col === 0)
+}
+
+export class FourPlayerGame {
+  constructor(canvas, hudEl, opts = {}) {
+    this.canvas = canvas
+    this.ctx    = canvas.getContext('2d')
+    this.hudEl  = hudEl
+    this.showCoords      = false
+    this.stalemateMode   = opts.stalemateMode ?? 'loss'
+    this.enPassantEnabled = opts.enPassant ?? true
+    this.p3Colour = opts.p3Colour ?? '#3498db'
+    this.p4Colour = opts.p4Colour ?? '#27ae60'
+
+    this._onResize = () => { this._sized(); this.render() }
+    this._onClick  = e => {
+      const rect = canvas.getBoundingClientRect()
+      const px = (e.clientX - rect.left) * (canvas.width / rect.width)
+      const py = (e.clientY - rect.top)  * (canvas.height / rect.height)
+      this._handleClick(this._nearestCell(px, py))
+    }
+    window.addEventListener('resize', this._onResize)
+    canvas.addEventListener('click', this._onClick)
+
+    this._sized()
+    this.reset()
+  }
+
+  destroy() {
+    window.removeEventListener('resize', this._onResize)
+    this.canvas.removeEventListener('click', this._onClick)
+  }
+
+  setP3Colour(hex) { this.p3Colour = hex; this.render() }
+  setP4Colour(hex) { this.p4Colour = hex; this.render() }
+
+  _sized() {
+    const wrap = this.canvas.parentElement
+    const rect = wrap ? wrap.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight }
+    const S = Math.max(200, Math.min(rect.width, rect.height) - 8)
+    this.canvas.width = this.canvas.height = S
+    this.S  = S
+    this.sqSize = Math.floor(S * 0.88 / SQ4_SIZE)
+    this.ox = Math.floor((S - this.sqSize * SQ4_SIZE) / 2)
+    this.oy = Math.floor((S - this.sqSize * SQ4_SIZE) / 2)
+  }
+
+  _cellToXY(id) {
+    const col = sq4col(id), row = sq4row(id)
+    return [
+      this.ox + col * this.sqSize + this.sqSize / 2,
+      this.oy + (SQ4_SIZE - 1 - row) * this.sqSize + this.sqSize / 2,
+    ]
+  }
+
+  _nearestCell(px, py) {
+    const col = Math.floor((px - this.ox) / this.sqSize)
+    const row = (SQ4_SIZE - 1) - Math.floor((py - this.oy) / this.sqSize)
+    if (!sq4valid(col, row)) return null
+    return sq4id(col, row)
+  }
+
+  reset() {
+    this.board           = new Map()
+    this.selected        = null
+    this.validMoves      = []
+    this.validCaptures   = []
+    this.validCastles    = []
+    this.validEpCapture  = null
+    this.players         = ['red','blue','yellow','green']
+    this.currentIdx      = 0
+    this.currentPlayer   = 'red'
+    this.kingAlive       = { red:true, blue:true, yellow:true, green:true }
+    this.eliminated      = { red:false, blue:false, yellow:false, green:false }
+    this.winner          = null
+    this.gameOver        = false
+    this.gameOverReason  = null
+    this.checkAttackers  = []
+    this.pendingPromotion = null
+    this.enPassant       = null
+
+    // ── Red (bottom, row 0–1) — marches north ───────────────────────────────
+    // Back rank at row 0, pawns at row 1 — but cut corners mean cols 3–10
+    // Back rank piece order (left to right, red perspective): R N B Q K B N R
+    const redBack = ['R','N','B','Q','K','B','N','R']
+    for (let i = 0; i < 8; i++) {
+      const col = SQ4_CUT + i
+      this.board.set(sq4id(col, 0), { player:'red', type:redBack[i], hasMoved:false })
+      this.board.set(sq4id(col, 1), { player:'red', type:'P', hasMoved:false })
+    }
+
+    // ── Blue (left, col 0) — marches east ───────────────────────────────────
+    const blueBack = ['R','N','B','K','Q','B','N','R']
+    for (let i = 0; i < 8; i++) {
+      const row = SQ4_CUT + i
+      this.board.set(sq4id(0, row), { player:'blue', type:blueBack[i], hasMoved:false })
+      this.board.set(sq4id(1, row), { player:'blue', type:'P', hasMoved:false })
+    }
+
+    // ── Yellow (top, row 13) — marches south ────────────────────────────────
+    const yellowBack = ['R','N','B','K','Q','B','N','R']
+    for (let i = 0; i < 8; i++) {
+      const col = SQ4_CUT + i
+      this.board.set(sq4id(col, SQ4_SIZE-1), { player:'yellow', type:yellowBack[7-i], hasMoved:false })
+      this.board.set(sq4id(col, SQ4_SIZE-2), { player:'yellow', type:'P', hasMoved:false })
+    }
+
+    // ── Green (right, col 13) — marches west ────────────────────────────────
+    const greenBack = ['R','N','B','Q','K','B','N','R']
+    for (let i = 0; i < 8; i++) {
+      const row = SQ4_CUT + i
+      this.board.set(sq4id(SQ4_SIZE-1, row), { player:'green', type:greenBack[7-i], hasMoved:false })
+      this.board.set(sq4id(SQ4_SIZE-2, row), { player:'green', type:'P', hasMoved:false })
+    }
+
+    this._updateCheckStatus()
+    this._updateHUD()
+    this.render()
+  }
+
+  // ── Player colours ───────────────────────────────────────────────────────────
+  _pColor(player) {
+    return { red:'#ffffff', blue: this.p3Colour, yellow:this.p4Colour, green: '#000000' }[player]
+  }
+  _pTxt(player) {
+    return { red:'#111', blue: this._textFor(this.p3Colour), yellow:this._textFor(this.p4Colour), green: '#fff' }[player]
+  }
+  _pName(player) {
+    return { red:'P1', blue:'P2', yellow:'P3', green:'P4' }[player]
+  }
+  _textFor(hex) {
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16)
+    return (r + g + b) < 300 ? '#fff' : '#000'
+  }
+
+  // ── Attack / check helpers ───────────────────────────────────────────────────
+  _attackersOf(targetCell, byPlayer, board) {
+    if (this.eliminated[byPlayer]) return []
+    const occ = id => board.has(id)
+    const attackers = []
+    for (const [id, piece] of board) {
+      if (piece.player !== byPlayer) continue
+      let attacks = new Set()
+      if (piece.type === 'K') attacks = sq4kingMoves(id)
+      else if (piece.type === 'N') attacks = sq4knightMoves(id)
+      else if (piece.type === 'R') attacks = sq4rookMoves(id, occ)
+      else if (piece.type === 'B') attacks = sq4bishopMoves(id, occ)
+      else if (piece.type === 'Q') attacks = sq4queenMoves(id, occ)
+      else if (piece.type === 'P') {
+        const fakeBoard = new Map(board)
+        if (!fakeBoard.has(targetCell)) fakeBoard.set(targetCell, { player:'__dummy__', type:'P' })
+        const pm = sq4pawnMoves(id, piece.player, fakeBoard, null)
+        pm.captures.forEach(c => attacks.add(c))
+      }
+      if (attacks.has(targetCell)) attackers.push(id)
+    }
+    return attackers
+  }
+
+  _isInCheck(player, board) {
+    let kingCell = null
+    for (const [id, piece] of board) {
+      if (piece.player === player && piece.type === 'K') { kingCell = id; break }
+    }
+    if (!kingCell) return false
+    const others = this.players.filter(p => p !== player)
+    for (const opp of others) {
+      if (this._attackersOf(kingCell, opp, board).length > 0) return true
+    }
+    return false
+  }
+
+  _updateCheckStatus() {
+    this.checkAttackers = []
+    for (const [id, piece] of this.board) {
+      if (piece.type !== 'K') continue
+      const player  = piece.player
+      const others  = this.players.filter(p => p !== player)
+      let attackers = []
+      for (const opp of others) attackers = attackers.concat(this._attackersOf(id, opp, this.board))
+      if (attackers.length > 0) this.checkAttackers.push({ king: id, by: attackers })
+    }
+  }
+
+  // ── Move generation ───────────────────────────────────────────────────────────
+  _getRawMoves(cellId, board) {
+    const piece = board.get(cellId)
+    if (!piece) return { moves:[], captures:[], epCapture:null }
+    const occ = id => board.has(id)
+    let moves = [], captures = [], epCapture = null
+
+    if (piece.type === 'P') {
+      const ep = this.enPassantEnabled ? this.enPassant : null
+      const r = sq4pawnMoves(cellId, piece.player, board, ep)
+      moves = r.moves; captures = r.captures; epCapture = r.epCapture
+    } else {
+      let raw = new Set()
+      if (piece.type === 'K') raw = sq4kingMoves(cellId)
+      else if (piece.type === 'R') raw = sq4rookMoves(cellId, occ)
+      else if (piece.type === 'B') raw = sq4bishopMoves(cellId, occ)
+      else if (piece.type === 'Q') raw = sq4queenMoves(cellId, occ)
+      else if (piece.type === 'N') raw = sq4knightMoves(cellId)
+      raw.forEach(id => {
+        const o = board.get(id)
+        if (!o) moves.push(id)
+        else if (o.player !== piece.player) captures.push(id)
+      })
+    }
+    return { moves, captures, epCapture }
+  }
+
+  _getLegalMoves(cellId) {
+    const piece = board_alias => this.board.get(cellId)
+    const p = this.board.get(cellId)
+    if (!p) return { moves:[], captures:[], castles:[], epCapture:null }
+
+    const raw = this._getRawMoves(cellId, this.board)
+    // Castling only valid when exactly 2 kings remain (same logic as 3P)
+    const aliveKings = this.players.filter(pl => this.kingAlive[pl])
+    const twoKings   = aliveKings.length === 2
+
+    const simulateMove = to => {
+      const sim = new Map(this.board)
+      sim.delete(cellId)
+      if (raw.epCapture && raw.epCapture.to === to) sim.delete(raw.epCapture.capturedCell)
+      sim.set(to, { ...p, hasMoved:true })
+      return sim
+    }
+
+    const filterArr = twoKings
+      ? arr => arr.filter(to => !this._isInCheck(p.player, simulateMove(to)))
+      : arr => arr
+
+    const filteredCaptures = filterArr(raw.captures)
+    const epCapture = (raw.epCapture && filteredCaptures.includes(raw.epCapture.to)) ? raw.epCapture : null
+
+    return { moves: filterArr(raw.moves), captures: filteredCaptures, castles: [], epCapture }
+  }
+
+  _hasAnyLegalMove(player) {
+    for (const [id, piece] of this.board) {
+      if (piece.player !== player) continue
+      const { moves, captures } = this._getLegalMoves(id)
+      if (moves.length > 0 || captures.length > 0) return true
+    }
+    return false
+  }
+
+  // ── Click / select / execute ─────────────────────────────────────────────────
+  _handleClick(cellId) {
+    if (this.gameOver || this.pendingPromotion) return
+    if (!cellId) { this._deselect(); return }
+
+    if (this.selected) {
+      if (this.validMoves.includes(cellId) || this.validCaptures.includes(cellId)) {
+        this._executeMove(this.selected, cellId); return
+      }
+      const p = this.board.get(cellId)
+      if (p && p.player === this.currentPlayer) { this._selectCell(cellId); return }
+      this._deselect(); return
+    }
+
+    const p = this.board.get(cellId)
+    if (p && p.player === this.currentPlayer) this._selectCell(cellId)
+  }
+
+  _deselect() {
+    this.selected = null; this.validMoves = []; this.validCaptures = []; this.validCastles = []; this.validEpCapture = null
+    this.render()
+  }
+
+  _selectCell(cellId) {
+    this.selected = cellId
+    const r = this._getLegalMoves(cellId)
+    this.validMoves = r.moves; this.validCaptures = r.captures; this.validCastles = r.castles || []
+    this.validEpCapture = r.epCapture || null
+    this.render()
+  }
+
+  _executeMove(from, to) {
+    const piece = this.board.get(from)
+    const isEP  = !!(this.validEpCapture && this.validEpCapture.to === to)
+    const captured = isEP ? this.board.get(this.validEpCapture.capturedCell) : this.board.get(to)
+
+    let nextEnPassant = null
+    if (piece.type === 'P') {
+      const [dc, dr] = sq4pawnDirection(piece.player)
+      if (sq4col(to) === sq4col(from) + dc*2 && sq4row(to) === sq4row(from) + dr*2) {
+        nextEnPassant = {
+          pawnCell:    to,
+          skippedCell: sq4id(sq4col(from)+dc, sq4row(from)+dr),
+          player: piece.player,
+        }
+      }
+    }
+
+    this.board.delete(from)
+    if (isEP) this.board.delete(this.validEpCapture.capturedCell)
+    this.board.set(to, { ...piece, hasMoved:true })
+
+    if (captured && captured.type === 'K') {
+      this.kingAlive[captured.player]  = false
+      this.eliminated[captured.player] = true
+    }
+
+    this.selected = null; this.validMoves = []; this.validCaptures = []; this.validCastles = []; this.validEpCapture = null
+    this.enPassant = this.enPassantEnabled ? nextEnPassant : null
+
+    const aliveKings = this.players.filter(p => this.kingAlive[p])
+    if (aliveKings.length === 1) {
+      this.winner         = aliveKings[0]
+      this.gameOver       = true
+      this.gameOverReason = 'capture'
+      this._updateCheckStatus(); this._updateHUD(); this.render()
+      return
+    }
+
+    if (piece.type === 'P' && sq4isPromotion(to, piece.player)) {
+      this.pendingPromotion = { from, to, player: piece.player }
+      this._updateCheckStatus(); this._updateHUD(); this.render()
+      this._showPromotionPicker(to, piece.player)
+      return
+    }
+
+    this._finishTurn()
+  }
+
+  choosePromotion(type) {
+    if (!this.pendingPromotion) return
+    const { to, player } = this.pendingPromotion
+    this.board.set(to, { player, type, hasMoved:true })
+    this.pendingPromotion = null
+    this._hidePromotionPicker()
+    this._finishTurn()
+  }
+
+  _finishTurn() {
+    const aliveKings = this.players.filter(p => this.kingAlive[p])
+    const twoKings   = aliveKings.length === 2
+
+    let tries = 0, next
+    do {
+      this.currentIdx = (this.currentIdx + 1) % this.players.length
+      next = this.players[this.currentIdx]
+      tries++
+    } while (this.eliminated[next] && tries < this.players.length)
+    this.currentPlayer = next
+
+    this._updateCheckStatus()
+
+    if (twoKings) {
+      const inCheck = this.checkAttackers.some(c => {
+        const kp = this.board.get(c.king); return kp && kp.player === next
+      })
+      const hasMove = this._hasAnyLegalMove(next)
+
+      if (!hasMove) {
+        this.gameOver = true
+        if (inCheck) {
+          this.winner         = aliveKings.find(p => p !== next)
+          this.gameOverReason = 'checkmate'
+        } else {
+          this.gameOverReason = 'stalemate'
+          this.winner = this.stalemateMode === 'loss' ? aliveKings.find(p => p !== next) : null
+        }
+      }
+    }
+
+    this._updateHUD()
+    this.render()
+  }
+
+  _showPromotionPicker(cell, player) {
+    this.canvas.dispatchEvent(new CustomEvent('promotion', { detail:{ cell, player }, bubbles:true }))
+  }
+  _hidePromotionPicker() {
+    this.canvas.dispatchEvent(new CustomEvent('promotionDone', { bubbles:true }))
+  }
+
+  // ── HUD ──────────────────────────────────────────────────────────────────────
+  _updateHUD() {
+    if (!this.hudEl) return
+
+    if (this.gameOver) {
+      if (this.gameOverReason === 'stalemate' && this.winner === null) {
+        this.hudEl.badge.textContent = 'Draw'
+        this.hudEl.badge.style.background = '#555'
+        this.hudEl.badge.style.color = '#fff'
+        this.hudEl.status.textContent = 'Stalemate (no legal moves)'
+      } else if (this.winner) {
+        const reason = this.gameOverReason === 'checkmate' ? 'Checkmate'
+                     : this.gameOverReason === 'stalemate' ? 'Stalemate'
+                     : 'King captured'
+        this.hudEl.badge.textContent = `${this._pName(this.winner)} wins! 👑`
+        this.hudEl.badge.style.background = this._pColor(this.winner)
+        this.hudEl.badge.style.color = this._pTxt(this.winner)
+        this.hudEl.status.textContent = reason
+      }
+    } else if (this.pendingPromotion) {
+      const p = this.pendingPromotion.player
+      this.hudEl.badge.textContent = this._pName(p)
+      this.hudEl.badge.style.background = this._pColor(p)
+      this.hudEl.badge.style.color = this._pTxt(p)
+      this.hudEl.status.textContent = 'Choose promotion piece'
+    } else {
+      const elim = this.players.filter(p => this.eliminated[p]).map(p => this._pName(p))
+      const inCheckNow = this.checkAttackers.some(c => {
+        const kp = this.board.get(c.king); return kp && kp.player === this.currentPlayer
+      })
+      this.hudEl.badge.textContent = this._pName(this.currentPlayer)
+      this.hudEl.badge.style.background = this._pColor(this.currentPlayer)
+      this.hudEl.badge.style.color = this._pTxt(this.currentPlayer)
+      const checkNote = inCheckNow ? ' · Check!' : ''
+      this.hudEl.status.textContent = elim.length
+        ? `${elim.join(', ')} eliminated${checkNote}`
+        : checkNote.trim()
+    }
+  }
+
+  toggleCoords()        { this.showCoords = !this.showCoords; this.render() }
+  setStalemateMode(m)   { this.stalemateMode = m }
+  setEnPassantEnabled(e){ this.enPassantEnabled = e; if (!e) this.enPassant = null; if (this.selected) this._selectCell(this.selected) }
+
+  // ── Rendering ────────────────────────────────────────────────────────────────
+  render() {
+    this._drawBoard()
+    this._drawHighlights()
+    this._drawPieces()
+    this._drawCheckIndicators()
+    if (this.showCoords) this._drawCoords()
+    if (this.gameOver)   this._drawEndOverlay()
+  }
+
+  _drawBoard() {
+    const { ctx, S, ox, oy, sqSize } = this
+    ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, S, S)
+
+    for (let col = 0; col < SQ4_SIZE; col++) {
+      for (let row = 0; row < SQ4_SIZE; row++) {
+        if (!sq4valid(col, row)) continue
+        const x = ox + col * sqSize, y = oy + (SQ4_SIZE - 1 - row) * sqSize
+        ctx.fillStyle = (col + row) % 2 === 0 ? DARK_SQ : LIGHT_SQ
+        ctx.fillRect(x, y, sqSize, sqSize)
+        ctx.strokeStyle = BORDER; ctx.lineWidth = 0.5; ctx.strokeRect(x, y, sqSize, sqSize)
+      }
+    }
+
+    // Territory shading strips
+    const tint = 'rgba(0,0,0,0.06)'
+    const playerStrips = [
+      // red: rows 0-2
+      { cols:[SQ4_CUT,SQ4_SIZE-SQ4_CUT-1], rows:[0,SQ4_CUT-1], player:'red' },
+      // blue: cols 0-2
+      { cols:[0,SQ4_CUT-1], rows:[SQ4_CUT,SQ4_SIZE-SQ4_CUT-1], player:'blue' },
+      // yellow: rows 11-13
+      { cols:[SQ4_CUT,SQ4_SIZE-SQ4_CUT-1], rows:[SQ4_SIZE-SQ4_CUT,SQ4_SIZE-1], player:'yellow' },
+      // green: cols 11-13
+      { cols:[SQ4_SIZE-SQ4_CUT,SQ4_SIZE-1], rows:[SQ4_CUT,SQ4_SIZE-SQ4_CUT-1], player:'green' },
+    ]
+    for (const strip of playerStrips) {
+      const [c0,c1] = strip.cols, [r0,r1] = strip.rows
+      ctx.fillStyle = this._pColor(strip.player) + '22'
+      for (let col = c0; col <= c1; col++) for (let row = r0; row <= r1; row++) {
+        if (!sq4valid(col, row)) continue
+        const x = ox + col * sqSize, y = oy + (SQ4_SIZE - 1 - row) * sqSize
+        ctx.fillRect(x, y, sqSize, sqSize)
+      }
+    }
+
+    // Player labels outside board
+    const lfs = Math.max(9, Math.round(sqSize * 0.7))
+    ctx.font = `bold ${lfs}px system-ui`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    const mid = ox + sqSize * SQ4_SIZE / 2
+    ctx.fillStyle = this._pColor('red');    ctx.fillText('Red',    mid, oy + SQ4_SIZE * sqSize + (S - oy - SQ4_SIZE*sqSize)/2)
+    ctx.fillStyle = this._pColor('yellow'); ctx.fillText('Yellow', mid, oy / 2)
+    ctx.fillStyle = this._pColor('blue');   ctx.fillText('Blue',   ox / 2, oy + SQ4_SIZE * sqSize / 2)
+    ctx.fillStyle = this._pColor('green');  ctx.fillText('Green',  ox + SQ4_SIZE * sqSize + (S - ox - SQ4_SIZE*sqSize)/2, oy + SQ4_SIZE * sqSize / 2)
+  }
+
+  _drawHighlights() {
+    const { ctx, sqSize } = this
+    const pr = sqSize * 0.15
+
+    if (this.selected) {
+      const [x, y] = this._cellToXY(this.selected)
+      ctx.beginPath(); ctx.arc(x, y, sqSize * 0.44, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,210,0,.45)'; ctx.fill()
+    }
+    this.validMoves.forEach(id => {
+      const [x, y] = this._cellToXY(id)
+      ctx.beginPath(); ctx.arc(x, y, pr, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(60,200,60,.75)'; ctx.fill()
+    })
+    this.validCaptures.forEach(id => {
+      const [x, y] = this._cellToXY(id)
+      ctx.beginPath(); ctx.arc(x, y, sqSize * 0.42, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(220,40,40,.9)'; ctx.lineWidth = 2.5; ctx.stroke()
+    })
+    if (this.validEpCapture) {
+      const [x, y] = this._cellToXY(this.validEpCapture.to)
+      ctx.beginPath(); ctx.arc(x, y, sqSize * 0.28, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(180,80,255,.9)'; ctx.lineWidth = 1.8; ctx.stroke()
+    }
+  }
+
+  _drawCheckIndicators() {
+    const { ctx, sqSize } = this
+    if (!this.checkAttackers || this.checkAttackers.length === 0) return
+    const seen = new Set()
+    for (const entry of this.checkAttackers) {
+      for (const attackerId of entry.by) {
+        if (seen.has(attackerId)) continue; seen.add(attackerId)
+        const [x, y] = this._cellToXY(attackerId)
+        ctx.beginPath(); ctx.arc(x, y, sqSize * 0.43, 0, Math.PI * 2)
+        ctx.strokeStyle = '#ff2d2d'; ctx.lineWidth = 2.2
+        ctx.shadowColor = '#ff2d2d'; ctx.shadowBlur = 6; ctx.stroke(); ctx.shadowBlur = 0
+      }
+      if (entry.king) {
+        const [kx, ky] = this._cellToXY(entry.king)
+        ctx.beginPath(); ctx.arc(kx, ky, sqSize * 0.46, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(255,45,45,0.55)'; ctx.lineWidth = 1.6; ctx.stroke()
+      }
+    }
+  }
+
+  _drawPieces() {
+    const { ctx, sqSize } = this
+    const pr = sqSize * 0.38
+    const fs = Math.round(sqSize * 0.52)
+    const SYMS = {K:{l:'♔',d:'♚'},Q:{l:'♕',d:'♛'},R:{l:'♖',d:'♜'},B:{l:'♗',d:'♝'},N:{l:'♘',d:'♞'},P:{l:'♙',d:'♟'}}
+
+    this.board.forEach((piece, id) => {
+      const [x, y] = this._cellToXY(id)
+      ctx.globalAlpha = this.eliminated[piece.player] ? 0.38 : 1.0
+      ctx.beginPath(); ctx.arc(x, y, pr, 0, Math.PI * 2)
+      ctx.fillStyle = this._pColor(piece.player); ctx.fill()
+      ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 1; ctx.stroke()
+      ctx.font = `${fs}px serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillStyle = this._pTxt(piece.player)
+      const variant = ['red','yellow'].includes(piece.player) ? 'l' : 'd'
+      const sym = SYMS[piece.type]?.[variant] ?? '?'
+      ctx.fillText(sym, x, y + 1)
+      ctx.globalAlpha = 1.0
+    })
+  }
+
+  _drawCoords() {
+    const { ctx, sqSize } = this
+    const fs = Math.max(7, Math.round(sqSize * 0.18))
+    ctx.font = `${fs}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    this.board.forEach((_, id) => {
+      const [x, y] = this._cellToXY(id)
+      const ly = y - sqSize * 0.3
+      const tw = ctx.measureText(id).width
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'
+      ctx.beginPath(); ctx.roundRect(x - tw/2 - 2, ly - fs/2 - 1, tw + 4, fs + 2, 2); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.fillText(id, x, ly)
+    })
+  }
+
+  _drawEndOverlay() {
+    const { ctx, S, winner, gameOverReason } = this
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, S, S)
+
+    const bw = S * 0.58, bh = S * 0.14
+    const bx = (S - bw) / 2, by = (S - bh) / 2
+    ctx.fillStyle = '#1a1a2e'
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 12); ctx.fill()
+
+    const isDraw = gameOverReason === 'stalemate' && winner === null
+    ctx.strokeStyle = isDraw ? '#888' : this._pColor(winner)
+    ctx.lineWidth = 2; ctx.stroke()
+
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.font = `bold ${Math.round(S * 0.042)}px system-ui`
+
+    if (isDraw) {
+      ctx.fillStyle = '#ccc'; ctx.fillText('Stalemate — Draw', S/2, by + bh * 0.38)
+    } else {
+      ctx.fillStyle = this._pColor(winner)
+      const headline = gameOverReason === 'checkmate' ? `${this._pName(winner)} wins! Checkmate 👑`
+                     : gameOverReason === 'stalemate' ? `${this._pName(winner)} wins! Stalemate 👑`
+                     : `${this._pName(winner)} wins! 👑`
+      ctx.fillText(headline, S/2, by + bh * 0.38)
+    }
+
+    ctx.font = `${Math.round(S * 0.021)}px system-ui`
+    ctx.fillStyle = '#aaa'
+    const sub = gameOverReason === 'checkmate' ? 'No legal moves (king in check)'
+              : gameOverReason === 'stalemate' ? 'No legal moves (king not in check)'
+              : 'King captured'
+    ctx.fillText(`${sub} · Press Reset to play again`, S/2, by + bh * 0.72)
   }
 }
 
