@@ -1,0 +1,68 @@
+{
+    "D4": {
+        "up":"D5",
+        "down": "D3",
+        "left": "C4",
+        "right": "E4",
+        "diag1.1": "I5",
+        "diag1.2": "E9",
+        "diag2": "E3",
+        "diag3": "C3",
+        "diag4": "C5"
+    },
+    "D5": {
+        "up":"D6",
+        "down": "D4",
+        "left": "C5",
+        "right": "I5",
+        "diag1": "I6",
+        "diag2.1": "I9",
+        "diag2.2": "E4",
+        "diag3": "C4",
+        "diag4": "C6"
+    },
+    "I5": {
+        "up":"J5",
+        "down": "D5",
+        "left": "I6",
+        "right": "I9",
+        "diag1": "J6",
+        "diag2": "J9",
+        "diag3.1": "E9",
+        "diag3.2": "D4",
+        "diag4": "D6"
+    },
+    "I9": {
+        "up":"J9",
+        "down": "E9",
+        "left": "I5",
+        "right": "I10",
+        "diag1": "J10",
+        "diag2": "E10",
+        "diag3.1": "E4",
+        "diag3.2": "D5",
+        "diag4": "J5"
+    },
+    "E9": {
+        "up":"I9",
+        "down": "F9",
+        "left": "E4",
+        "right": "E10",
+        "diag1": "I10",
+        "diag2": "F10",
+        "diag3": "F4",
+        "diag4.1": "D4",
+        "diag4.2": "I5"
+    },
+    "E4": {
+        "up":"E9",
+        "down": "E3",
+        "left": "D4",
+        "right": "F4",
+        "diag1": "F9",
+        "diag2": "F3",
+        "diag3": "D3",
+        "diag4.1": "D5",
+        "diag4.2": "I9"
+    }
+}

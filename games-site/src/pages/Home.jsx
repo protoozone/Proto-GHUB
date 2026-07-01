@@ -16,13 +16,13 @@ export default function Home() {
         <br></br>
         <p>
             If you have any suggestions for improvements, please feel <br></br>
-            free to reach out on my Twitter here: xxx
+            free to reach out on my Twitter here: https://x.com/Protosplo
         </p>
         <br></br>
         <p>
             This site will never host ads, or charge for content. If you'd <br></br>
             like to install a copy of the source code yourself, feel free to <br></br>
-            do so via the following github link: yyy
+            do so via the following github link: https://github.com/protoozone/Proto-GHUB/tree/main/games-site
         </p>
         <br></br>
         {/*

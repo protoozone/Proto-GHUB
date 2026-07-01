@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Chess</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1118;
+  --surface:#1a1f2e;
+  --border:#2e3550;
+  --accent:#7ec87e;
+  --text:#e8e4d8;
+  --muted:#8891a8;
+  --font:system-ui,-apple-system,sans-serif;
+  --mono:'Courier New',monospace;
+}
+html,body{height:100%}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font);
+  min-height:100dvh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:1.5rem 1rem 2rem;
+  gap:1.25rem;
+  overflow-x:hidden;
+}
+body.in-game{
+  padding:0;
+  gap:0;
+  overflow:hidden;
+  height:100dvh;
+}
+
+/* ── Header / chrome (hidden during full-screen game) ── */
+header{display:flex;flex-direction:column;align-items:center;gap:0.2rem}
+h1{font-size:1.5rem;font-weight:700;color:var(--accent);letter-spacing:-0.02em}
+.sub{font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em}
+
+.chrome{display:flex;flex-direction:column;align-items:center;gap:1.25rem;width:100%}
+body.in-game .chrome{display:none}
+
+/* ── Player selector ── */
+.selector{display:flex;flex-direction:column;align-items:center;gap:0.6rem}
+.selector-label{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)}
+.btn-row{display:flex;flex-wrap:wrap;gap:0.35rem;justify-content:center;max-width:480px}
+.p-btn{
+  padding:0.4rem 0.85rem;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:8px;
+  color:var(--muted);
+  font-size:0.85rem;
+  font-family:var(--font);
+  cursor:pointer;
+  transition:border-color .15s,color .15s,background .15s;
+  min-width:46px;
+  text-align:center;
+}
+.p-btn:hover{border-color:var(--accent);color:var(--text)}
+.p-btn.active{
+  background:rgba(126,200,126,0.12);
+  border-color:var(--accent);
+  color:var(--accent);
+  font-weight:600;
+}
+
+/* ── Action row ── */
+.action-row{display:flex;align-items:center;gap:0.6rem;min-height:2.2rem;flex-wrap:wrap;justify-content:center}
+.board-info{font-size:0.72rem;color:var(--muted);font-family:var(--mono);letter-spacing:0.04em}
+.play-btn{
+  padding:0.38rem 1.1rem;
+  background:rgba(126,200,126,0.15);
+  border:1px solid var(--accent);
+  border-radius:8px;
+  color:var(--accent);
+  font-size:0.82rem;
+  font-family:var(--font);
+  font-weight:600;
+  cursor:pointer;
+  transition:background .15s,transform .1s;
+  white-space:nowrap;
+}
+.play-btn:hover{background:rgba(126,200,126,0.28);transform:translateY(-1px)}
+.play-btn:active{transform:translateY(0)}
+
+/* ── Rule toggles (stalemate / en passant) ── */
+.stalemate-row{display:flex;align-items:center;gap:0.9rem;font-size:0.72rem;color:var(--muted);font-family:var(--mono);flex-wrap:wrap;justify-content:center}
+.stalemate-row select{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:5px;
+  color:var(--text);
+  font-size:0.72rem;
+  font-family:var(--mono);
+  padding:2px 6px;
+  cursor:pointer;
+}
+.ep-toggle{
+  display:flex;
+  align-items:center;
+  gap:0.35rem;
+  cursor:pointer;
+  user-select:none;
+}
+.ep-toggle input[type="checkbox"]{
+  width:13px;
+  height:13px;
+  accent-color:var(--accent);
+  cursor:pointer;
+}
+
+/* ── Geometry viewer ── */
+#viewer-panel{display:flex;flex-direction:column;align-items:center;gap:0.75rem;width:100%}
+.canvas-wrap{
+  background:#0c0e14;
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:10px;
+  box-shadow:0 8px 40px rgba(0,0,0,.6);
+}
+canvas{display:block;border-radius:6px;cursor:default}
+.stats{display:flex;gap:1.5rem;font-size:0.7rem;color:var(--muted);font-family:var(--mono)}
+.stat-val{color:var(--accent);font-weight:600}
+
+/* ── Game panel (full-screen takeover) ── */
+#game-panel{
+  display:none;
+  flex-direction:column;
+  width:100%;
+  height:100%;
+}
+body.in-game #game-panel{display:flex}
+
+#hud{
+  width:100%;
+  background:#111;
+  border-bottom:1px solid #2a2a3e;
+  padding:7px 16px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  font-size:13px;
+  color:#ddd;
+  flex-shrink:0;
+}
+#turn-badge{padding:2px 10px;border-radius:4px;font-weight:700;font-size:12px;transition:background .3s}
+#game-status{color:#aaa;font-size:11px;margin-left:auto}
+.hud-btn{
+  background:#2a2a3e;
+  color:#ccc;
+  border:1px solid #444;
+  padding:4px 11px;
+  border-radius:5px;
+  cursor:pointer;
+  font-size:11px;
+  font-family:var(--font);
+}
+.hud-btn:hover{background:#3a3a5e}
+
+#game-canvas-wrap{
+  flex:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#0c0e14;
+  min-height:0;
+  width:100%;
+  overflow:hidden;
+}
+#game-canvas{display:block;cursor:pointer}
+
+/* ── Promotion picker modal ── */
+#promo-modal{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.7);
+  z-index:200;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  gap:1rem;
+}
+#promo-modal.open{display:flex}
+.promo-label{
+  color:#e8e4d8;
+  font-size:0.85rem;
+  font-family:var(--font);
+  text-transform:uppercase;
+  letter-spacing:0.1em;
+}
+.promo-choices{display:flex;gap:0.7rem}
+.promo-choice{
+  width:68px;height:68px;
+  background:#1a1f2e;
+  border:2px solid #2e3550;
+  border-radius:10px;
+  color:#e8e4d8;
+  font-size:2.1rem;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:border-color .15s,background .15s,transform .1s;
+  font-family:serif;
+}
+.promo-choice:hover{border-color:var(--accent);background:rgba(126,200,126,.12);transform:translateY(-2px)}
+
+/* ── Back link ── */
+.back-btn{
+  padding:0.35rem 0.85rem;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:7px;
+  color:var(--muted);
+  font-size:0.78rem;
+  font-family:var(--font);
+  cursor:pointer;
+  transition:border-color .15s,color .15s;
+  text-decoration:none;
+}
+.back-btn:hover{border-color:var(--accent);color:var(--text)}
+
+@media(max-width:500px){
+  .p-btn{padding:.35rem .55rem;font-size:.78rem}
+  .play-btn{font-size:.78rem;padding:.35rem .85rem}
+}
+</style>
+</head>
+<body>
+
+<div class="chrome">
+  <header>
+    <h1>♟ Chess</h1>
+    <p class="sub">Multi-player board system</p>
+  </header>
+
+  <a class="back-btn" onclick="window.history.back()">← Back to Hub</a>
+
+  <div class="selector">
+    <span class="selector-label">Number of players</span>
+    <div class="btn-row" id="btn-row"></div>
+  </div>
+
+  <div class="action-row">
+    <span class="board-info" id="board-info">&nbsp;</span>
+    <button class="play-btn" id="play-btn" style="display:none">▶ Play</button>
+  </div>
+
+  <div class="stalemate-row" id="stalemate-row" style="display:none">
+    <span>Stalemate →</span>
+    <select id="stalemate-select" onchange="setStalemate(this.value)">
+      <option value="loss" selected>Loss</option>
+      <option value="draw">Draw</option>
+    </select>
+    <label class="ep-toggle">
+      <input type="checkbox" id="en-passant-toggle" checked onchange="setEnPassant(this.checked)" />
+      En passant
+    </label>
+
+    <label class="ep-toggle">
+      P3 colour
+      <input type="color" id="p3-colour" value="#3498db"
+            onchange="setP3Colour(this.value)" />
+    </label>
+  </div>
+
+  <div id="viewer-panel">
+    <div class="canvas-wrap">
+      <canvas id="viewer-canvas" width="520" height="520"></canvas>
+    </div>
+    <div class="stats" id="stats"></div>
+  </div>
+</div>
+
+<!-- ── 3P GAME PANEL (full screen) ── -->
+<div id="game-panel">
+  <div id="hud">
+    <span>Turn: <span id="turn-badge">Red</span></span>
+    <span id="game-status"></span>
+    <button class="hud-btn" id="coords-btn" onclick="toggleCoords()">coords</button>
+    <button class="hud-btn" onclick="resetGame()">↺ Reset</button>
+    <button class="hud-btn" onclick="exitGame()">✕ Exit</button>
+  </div>
+  <div id="game-canvas-wrap">
+    <canvas id="game-canvas"></canvas>
+  </div>
+</div>
+
+<!-- ── Promotion picker modal ── -->
+<div id="promo-modal" role="dialog" aria-label="Choose promotion piece">
+  <span class="promo-label">Promote pawn to…</span>
+  <div class="promo-choices">
+    <button class="promo-choice" onclick="pickPromotion('Q')" title="Queen">♛</button>
+    <button class="promo-choice" onclick="pickPromotion('R')" title="Rook">♜</button>
+    <button class="promo-choice" onclick="pickPromotion('B')" title="Bishop">♝</button>
+    <button class="promo-choice" onclick="pickPromotion('N')" title="Knight">♞</button>
+  </div>
+</div>
+
+<script type="module">
+import { buildBoard, renderBoard, TwoPlayerGame, ThreePlayerGame, FourPlayerGame } from './game.js'
+
+// ── Config ──────────────────────────────────────────────────────────────────
+const PLAYER_OPTIONS = [2, 3, 4, 5, 6, 8, 16]
+const DESCRIPTIONS = {
+  2:  '8×8 Standard: two players, one winner',
+  3:  '96 Hexagonal: three players, a true battle',
+  4:  '14×14 Cut Corners: four players, for those who love their friends',
+  5:  '165 Pentagonal: five players, for those with more than three friends',
+  6:  '240 Hexagonal: six players, this is starting to get a bit out of hand',
+  8:  '24x24 Cut Corners: eight players, dare not say I did not warn ye',
+  16: '44×44 Cut Corners: sixteen players, for the glory of the victor',
+}
+const PLAYABLE = new Set([2, 3, 4])
+
+// ── State ────────────────────────────────────────────────────────────────────
+let activeN  = 2
+let gameInst = null
+let inGame   = false
+
+// ── Build player buttons ─────────────────────────────────────────────────────
+const btnRow = document.getElementById('btn-row')
+PLAYER_OPTIONS.forEach(n => {
+  const btn = document.createElement('button')
+  btn.className   = 'p-btn' + (n === activeN ? ' active' : '')
+  btn.textContent = `${n}P`
+  btn.dataset.n   = n
+  btn.addEventListener('click', () => {
+    if (inGame) exitGame()
+    selectPlayers(n)
+  })
+  btnRow.appendChild(btn)
+})
+
+function selectPlayers(n) {
+  activeN = n
+  document.querySelectorAll('.p-btn').forEach(b => b.classList.toggle('active', +b.dataset.n === n))
+
+  const info    = document.getElementById('board-info')
+  const playBtn = document.getElementById('play-btn')
+  info.textContent = DESCRIPTIONS[n] ?? ''
+
+  if (PLAYABLE.has(n)) {
+    playBtn.style.display = 'inline-block'
+    playBtn.textContent   = '▶ Play'
+  } else {
+    playBtn.style.display = 'none'
+  }
+
+  document.getElementById('stalemate-row').style.display = (n === 3) ? 'flex' : 'none'
+
+  drawViewer(n)
+}
+
+// ── Geometry viewer ──────────────────────────────────────────────────────────
+function drawViewer(n) {
+  const canvas = document.getElementById('viewer-canvas')
+  const stats  = document.getElementById('stats')
+
+  const maxW = Math.min(window.innerWidth - 56, 420)
+  canvas.width = canvas.height = maxW
+
+  const t0    = performance.now()
+  const board = buildBoard(n)
+  const t1    = performance.now()
+  renderBoard(canvas, board, n)
+  const t2    = performance.now()
+
+  const sqCount  = board.squares.size
+  const adjCount = [...board.adj.values()].reduce((s, a) => s + Object.values(a).filter(Boolean).length, 0)
+
+  stats.innerHTML = `
+    <span>squares <span class="stat-val">${sqCount}</span></span>
+    <span>adj edges <span class="stat-val">${adjCount}</span></span>
+    <span>build <span class="stat-val">${(t1-t0).toFixed(1)}ms</span></span>
+    <span>render <span class="stat-val">${(t2-t1).toFixed(1)}ms</span></span>
+  `
+}
+
+// ── Launch / exit game (full-screen takeover) ─────────────────────────────────
+document.getElementById('play-btn').addEventListener('click', () => {
+  switch (activeN) {
+    case 2:
+      launchGame2P()
+      break
+
+    case 3:
+      launchGame3P()
+      break
+
+    case 4:
+      launchGame4P()
+      break
+  }
+})
+
+function sizeGameCanvas() {
+  const wrap = document.getElementById('game-canvas-wrap')
+  const gc   = document.getElementById('game-canvas')
+  // Use the wrap's actual laid-out box (after in-game class + flex have applied)
+  // rather than raw viewport numbers, and leave a small margin so the board
+  // never touches the wrap edges.
+  const rect = wrap.getBoundingClientRect()
+  const S = Math.max(200, Math.min(rect.width, rect.height) - 24)
+  gc.width  = S
+  gc.height = S
+}
+
+function launchGame2P() {
+  inGame = true
+  gameInst?.destroy()
+  gameInst = null
+
+  document.body.classList.add('in-game')
+
+  requestAnimationFrame(() => {
+    sizeGameCanvas()
+
+    const gc = document.getElementById('game-canvas')
+
+    const hudEl = {
+      hud: document.getElementById('hud'),
+      badge: document.getElementById('turn-badge'),
+      status: document.getElementById('game-status'),
+    }
+
+    gameInst = new TwoPlayerGame(gc, hudEl)
+  })
+}
+
+function launchGame3P() {
+  inGame = true
+  gameInst?.destroy()
+  gameInst = null
+  document.body.classList.add('in-game')
+
+  // Defer initialisation by one frame so the browser has laid out the
+  // full-screen game panel before we measure its dimensions.
+  requestAnimationFrame(() => {
+    sizeGameCanvas()
+    const gc = document.getElementById('game-canvas')
+
+    const hudEl = {
+      hud:    document.getElementById('hud'),
+      badge:  document.getElementById('turn-badge'),
+      status: document.getElementById('game-status'),
+    }
+    
+
+    const stalemateMode = document.getElementById('stalemate-select').value
+    const enPassant = document.getElementById('en-passant-toggle').checked
+    const p3Colour  = document.getElementById('p3-colour').value
+    gameInst = new ThreePlayerGame(gc, hudEl, { stalemateMode, enPassant, p3Colour })
+
+    gc.addEventListener('promotion', () => {
+      document.getElementById('promo-modal').classList.add('open')
+    })
+    gc.addEventListener('promotionDone', () => {
+      document.getElementById('promo-modal').classList.remove('open')
+    })
+  })
+}
+
+function launchGame4P() {
+  inGame = true
+  gameInst?.destroy()
+  gameInst = null
+
+  document.body.classList.add('in-game')
+
+  requestAnimationFrame(() => {
+    sizeGameCanvas()
+
+    const gc = document.getElementById('game-canvas')
+
+    const hudEl = {
+      hud: document.getElementById('hud'),
+      badge: document.getElementById('turn-badge'),
+      status: document.getElementById('game-status'),
+    }
+
+    gameInst = new FourPlayerGame(gc, hudEl)
+  })
+}
+
+window.exitGame = function() {
+  inGame   = false
+  gameInst?.destroy()
+  gameInst = null
+  gameInst = null
+  document.body.classList.remove('in-game')
+  document.getElementById('promo-modal').classList.remove('open')
+
+  const playBtn = document.getElementById('play-btn')
+  playBtn.textContent = '▶ Play'
+
+  drawViewer(activeN)
+}
+
+// ── Game control globals ──────────────────────────────────────────────────────
+window.resetGame    = () => gameInst?.reset()
+window.toggleCoords = () => gameInst?.toggleCoords()
+window.pickPromotion = type => gameInst?.choosePromotion(type)
+window.setStalemate  = mode => gameInst?.setStalemateMode(mode)
+window.setEnPassant  = enabled => gameInst?.setEnPassantEnabled(enabled)
+window.setP3Colour = hex => gameInst?.setP3Colour(hex)
+
+// ── Resize handling ───────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  if (inGame) {
+    sizeGameCanvas()
+    gameInst?.render()
+  } else {
+    drawViewer(activeN)
+  }
+})
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+selectPlayers(activeN)
+
+</script>
+</body>
+</html>
