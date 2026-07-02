@@ -123,7 +123,7 @@ body.in-game .chrome{display:none}
   padding:10px;
   box-shadow:0 8px 40px rgba(0,0,0,.6);
 }
-canvas{display:block;border-radius:6px;cursor:default}
+canvas{display:block;border-radius:6px;cursor:default;-webkit-tap-highlight-color:transparent;tap-highlight-color:transparent}
 .stats{display:flex;gap:1.5rem;font-size:0.7rem;color:var(--muted);font-family:var(--mono)}
 .stat-val{color:var(--accent);font-weight:600}
 
@@ -172,7 +172,7 @@ body.in-game #game-panel{display:flex}
   width:100%;
   overflow:hidden;
 }
-#game-canvas{display:block;cursor:pointer}
+#game-canvas{display:block;cursor:pointer;-webkit-tap-highlight-color:transparent;tap-highlight-color:transparent}
 
 /* ── Promotion picker modal ── */
 #promo-modal{
@@ -235,6 +235,7 @@ body.in-game #game-panel{display:flex}
 <div class="chrome">
   <header>
     <h1>♟ Chess</h1>
+    <p class="sub">Multi-player board system</p>
   </header>
 
   <a class="back-btn" onclick="window.history.back()">← Back to Hub</a>

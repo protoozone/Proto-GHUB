@@ -1489,20 +1489,19 @@ export class FourPlayerGame {
     const isEP  = !!(this.validEpCapture && this.validEpCapture.to === to)
     const captured = isEP ? this.board.get(this.validEpCapture.capturedCell) : this.board.get(to)
 
-    let nextEnPassant = null
     if (piece.type === 'P') {
       const [dc, dr] = sq4pawnDirection(piece.player)
       if (sq4col(to) === sq4col(from) + dc*2 && sq4row(to) === sq4row(from) + dr*2) {
-        nextEnPassant = {
+        this.enPassant = this.enPassantEnabled ? {
           pawnCell:    to,
           skippedCell: sq4id(sq4col(from)+dc, sq4row(from)+dr),
           player:      piece.player,
-        }
+        } : null
       }
     }
 
     this.board.delete(from)
-    if (isEP) this.board.delete(this.validEpCapture.capturedCell)
+    if (isEP) { this.board.delete(this.validEpCapture.capturedCell); this.enPassant = null }
     this.board.set(to, { ...piece, hasMoved:true })
 
     if (captured && captured.type === 'K') {
@@ -1511,7 +1510,6 @@ export class FourPlayerGame {
     }
 
     this.selected = null; this.validMoves = []; this.validCaptures = []; this.validCastles = []; this.validEpCapture = null
-    this.enPassant = this.enPassantEnabled ? nextEnPassant : null
 
     const aliveKings = this.players.filter(p => this.kingAlive[p])
     if (aliveKings.length === 1) {
@@ -2578,7 +2576,7 @@ export class ThreePlayerGame {
       })
       const checkNote = inCheckNow ? ' · Check!' : ''
       this.hudEl.status.textContent = elim.length
-        ? `${elim.join(', ')} eliminated!${checkNote}`
+        ? `${elim.join(', ')} eliminated (pieces remain)${checkNote}`
         : checkNote.trim()
     }
   }
