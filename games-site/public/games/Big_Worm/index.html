@@ -84,6 +84,19 @@
       align-items: center;
     }
 
+    #reset-btn {
+      background: transparent;
+      border: 1px solid #ffffff;
+      color: #ffffff;
+      font-family: monospace;
+      font-size: 12px;
+      padding: 4px 12px;
+      cursor: pointer;
+      letter-spacing: 1px;
+    }
+
+    #reset-btn:hover { border-color: #00ffff; color: #00ffff; }
+
     #score-display {
       font-size: 14px;
       letter-spacing: 1px;
@@ -163,9 +176,7 @@
   </div>
 
   <div id="menu">
-    <button onclick="window.history.back()">
-      Back to Hub
-    </button>
+    <button class="opt-btn" onclick="window.history.back()">← BACK TO HUB</button>
     <h1>BIG WORM</h1>
     <div class="option-group">
       <label>SIZE</label>
@@ -188,6 +199,7 @@
   </div>
 
   <div id="hud">
+    <button id="reset-btn">RESET</button>
     <span id="score-display">SCORE: 0</span>
     <button id="pause-btn">PAUSE</button>
   </div>

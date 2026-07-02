@@ -206,15 +206,17 @@ function returnToMenu() {
 
 // --- Input ---
 
+// --- Input --- (replace existing keydown listener)
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && running) { togglePause(); return }
+  if (e.key === " ") { togglePause(); return }
   if (e.key === "Escape" && !running) { returnToMenu(); return }
   if (!running) return
-  if (e.key === "ArrowUp"    && direction.y === 0) nextDirection = { x: 0, y: -1 }
-  if (e.key === "ArrowDown"  && direction.y === 0) nextDirection = { x: 0, y: 1 }
-  if (e.key === "ArrowLeft"  && direction.x === 0) nextDirection = { x: -1, y: 0 }
-  if (e.key === "ArrowRight" && direction.x === 0) nextDirection = { x: 1, y: 0 }
-  if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) e.preventDefault()
+  if ((e.key === "ArrowUp"    || e.key === "w") && direction.y === 0) nextDirection = { x: 0, y: -1 }
+  if ((e.key === "ArrowDown"  || e.key === "s") && direction.y === 0) nextDirection = { x: 0, y: 1 }
+  if ((e.key === "ArrowLeft"  || e.key === "a") && direction.x === 0) nextDirection = { x: -1, y: 0 }
+  if ((e.key === "ArrowRight" || e.key === "d") && direction.x === 0) nextDirection = { x: 1, y: 0 }
+  if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key)) e.preventDefault()
 })
 
 canvas.addEventListener("click", (e) => {
@@ -222,16 +224,17 @@ canvas.addEventListener("click", (e) => {
   const tapX = (e.clientX - rect.left) * (canvas.width  / rect.width)
   const tapY = (e.clientY - rect.top)  * (canvas.height / rect.height)
 
-  // if game over, clicking the esc text region returns to menu
   if (!running) {
     const textY = canvas.height / 2 + 56
-    if (tapY >= textY - 16 && tapY <= textY + 8) {
-      returnToMenu()
-    }
+    if (tapY >= textY - 16 && tapY <= textY + 8) returnToMenu()
     return
   }
 
-  if (paused) return
+  if (paused) {
+    const hubY = canvas.height / 2 + 40
+    if (tapY >= hubY - 16 && tapY <= hubY + 8) { returnToMenu(); return }
+    return
+  }
 
   // touch direction input
   const headPixelX = (snake[0].x + 0.5) * GRID
@@ -248,6 +251,10 @@ canvas.addEventListener("click", (e) => {
 })
 
 document.getElementById("pause-btn").addEventListener("click", togglePause)
+document.getElementById("reset-btn").addEventListener("click", () => {
+  stopMusic()
+  returnToMenu()
+})
 
 // --- Pause ---
 
@@ -315,10 +322,10 @@ function drawPauseOverlay() {
   ctx.fillStyle = "#ffffff"
   ctx.font = "bold 20px monospace"
   ctx.textAlign = "center"
-  ctx.fillText("PAUSED", canvas.width / 2, canvas.height / 2)
+  ctx.fillText("PAUSED", canvas.width / 2, canvas.height / 2 - 20)
   ctx.font = "13px monospace"
   ctx.fillStyle = "#aaaaaa"
-  ctx.fillText("ESC or PAUSE to resume", canvas.width / 2, canvas.height / 2 + 28)
+  ctx.fillText("ESC / SPACE / PAUSE to resume", canvas.width / 2, canvas.height / 2 + 10)
 }
 
 function endGame(won) {
