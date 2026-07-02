@@ -197,7 +197,7 @@ function updateFromEvent(e) {
   setVolume(ratio)
 }
 
-// --- Reset ---
+// --- Quit ---
 function returnToMenu() {
   document.getElementById("menu").style.display = "";
   canvas.style.display = "none";
@@ -211,6 +211,13 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && running) { togglePause(); return }
   if (e.key === " ") { togglePause(); return }
   if (e.key === "Escape" && !running) { returnToMenu(); return }
+  if (e.key === "r" || e.key === "R") {
+    stopMusic()
+    playMusic()
+    initGame(selectedSize, selectedDiff)
+    return
+  }
+  if (e.key === "q" || e.key === "Q") { stopMusic(); returnToMenu(); return }
   if (!running) return
   if ((e.key === "ArrowUp"    || e.key === "w") && direction.y === 0) nextDirection = { x: 0, y: -1 }
   if ((e.key === "ArrowDown"  || e.key === "s") && direction.y === 0) nextDirection = { x: 0, y: 1 }
@@ -225,14 +232,18 @@ canvas.addEventListener("click", (e) => {
   const tapY = (e.clientY - rect.top)  * (canvas.height / rect.height)
 
   if (!running) {
-    const textY = canvas.height / 2 + 56
-    if (tapY >= textY - 16 && tapY <= textY + 8) returnToMenu()
+    const menuY  = canvas.height / 2 + 56  // "press (ESC) to menu" text
+    const resetY = canvas.height / 2 + 78  // reset text below it
+    if (tapY >= menuY  - 16 && tapY <= menuY  + 8) { returnToMenu(); return }
+    if (tapY >= resetY - 16 && tapY <= resetY + 8) { stopMusic(); playMusic(); initGame(selectedSize, selectedDiff); return }
     return
   }
 
   if (paused) {
-    const hubY = canvas.height / 2 + 40
-    if (tapY >= hubY - 16 && tapY <= hubY + 8) { returnToMenu(); return }
+    const hubY   = canvas.height / 2 + 5  // back to hub in pause overlay
+    const resetY = canvas.height / 2 + 30  // reset in pause overlay
+    if (tapY >= hubY   - 16 && tapY <= hubY   + 8) { returnToMenu(); return }
+    if (tapY >= resetY - 16 && tapY <= resetY + 8) { stopMusic(); playMusic(); initGame(selectedSize, selectedDiff); return }
     return
   }
 
@@ -325,7 +336,8 @@ function drawPauseOverlay() {
   ctx.fillText("PAUSED", canvas.width / 2, canvas.height / 2 - 20)
   ctx.font = "13px monospace"
   ctx.fillStyle = "#aaaaaa"
-  ctx.fillText("ESC / SPACE / PAUSE to resume", canvas.width / 2, canvas.height / 2 + 10)
+  ctx.fillText("Press ESC/SPACE/PAUSE to resume", canvas.width / 2, canvas.height / 2 + 10)
+  ctx.fillText("Press R to restart", canvas.width / 2, canvas.height / 2 + 35)
 }
 
 function endGame(won) {
@@ -342,7 +354,8 @@ function endGame(won) {
     ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height / 2 + 30)
     ctx.font = "13px monospace"
     ctx.fillStyle = "#aaaaaa"
-    ctx.fillText("press (ESC) to restart", canvas.width / 2, canvas.height / 2 + 56)
+    ctx.fillText("ESC: Back to Main Menu", canvas.width / 2, canvas.height / 2 + 56)
+    ctx.fillText("R: Restart", canvas.width / 2, canvas.height / 2 + 76)
   }, 50)
 }
 
