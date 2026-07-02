@@ -2578,7 +2578,7 @@ export class ThreePlayerGame {
       })
       const checkNote = inCheckNow ? ' · Check!' : ''
       this.hudEl.status.textContent = elim.length
-        ? `${elim.join(', ')} eliminated (pieces remain)${checkNote}`
+        ? `${elim.join(', ')} eliminated!${checkNote}`
         : checkNote.trim()
     }
   }
