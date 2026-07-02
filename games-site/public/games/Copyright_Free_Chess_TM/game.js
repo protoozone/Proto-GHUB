@@ -9,8 +9,8 @@
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const PLAYER_COLORS = [
-  '#ffffff','#2980b9','#27ae60','#f39c12',
-  '#8e44ad','#2c3e50','#c0392b','#000000',
+  '#c0392b','#2980b9','#27ae60','#f39c12',
+  '#8e44ad','#16a085','#e67e22','#2c3e50',
 ]
 const LIGHT_SQ = '#f0d9b5'
 const DARK_SQ  = '#b58863'
@@ -221,8 +221,8 @@ function render2P(ctx,board,W,H){
   const pad=24,sq=Math.floor(Math.min(W,H-pad*2)/8),bw=sq*8
   const ox=(W-bw)/2,oy=(H-bw)/2
   renderGrid(ctx,board,ox,oy,sq,8,8,null)
-  drawPlayerLabel(ctx,W/2,oy-10,'White',PLAYER_COLORS[0],'bottom')
-  drawPlayerLabel(ctx,W/2,oy+bw+10,'Black',PLAYER_COLORS[1],'top')
+  drawPlayerLabel(ctx,W/2,oy-10,'P2','#888','bottom')
+  drawPlayerLabel(ctx,W/2,oy+bw+10,'P1','#f0e8d0','top')
 }
 
 function render4P(ctx,board,W,H){
@@ -234,10 +234,10 @@ function render4P(ctx,board,W,H){
   }
   renderGrid(ctx,board,ox,oy,sq,SIZE,SIZE,isValid)
   const MID=ox+bw/2
-  drawPlayerLabel(ctx,MID,oy+bw+14,'P1',PLAYER_COLORS[0],'top')
+  drawPlayerLabel(ctx,MID,oy+bw+14,'P1','#f0e8d0','top')
   drawPlayerLabel(ctx,MID,oy-14,'P3',PLAYER_COLORS[3],'bottom')
   drawPlayerLabel(ctx,ox-14,oy+bw/2,'P2',PLAYER_COLORS[1],'right')
-  drawPlayerLabel(ctx,ox+bw+14,oy+bw/2,'P4',PLAYER_COLORS[2],'left')
+  drawPlayerLabel(ctx,ox+bw+14,oy+bw/2,'P4','#888','left')
 }
 
 function render3P(ctx,board,W,H){
@@ -410,6 +410,12 @@ export function renderBoard(canvas,board,playerCount){
     case '8p': render8P(ctx,board,W,H);break
     case '16p':render16P(ctx,board,W,H);break
   }
+}
+
+// Convert col/row indices to human-readable "A1"-style label.
+// col 0→A, 1→B, … row 0→1, 1→2, …
+function sqLabel(col, row) {
+  return String.fromCharCode(65 + col) + (row + 1)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -867,7 +873,7 @@ export class TwoPlayerGame {
     if (!this.hudEl) return
     const PCOLORS = { white:'#f0f0f0', black:'#222222' }
     const PTXT    = { white:'#111111', black:'#ffffff' }
-    const PNAMES  = { white:'White', black:'Black' }
+    const PNAMES  = { white:'P1', black:'P2' }
 
     if (this.gameOver) {
       if (this.gameOverReason === 'stalemate' && this.winner === null) {
@@ -945,9 +951,9 @@ export class TwoPlayerGame {
     ctx.font = `bold ${lfs}px system-ui`
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillStyle = '#f0f0f0'
-    ctx.fillText('White', ox + sqSize * 4, oy + 8 * sqSize + (S - oy - 8 * sqSize) / 2)
+    ctx.fillText('P1', ox + sqSize * 4, oy + 8 * sqSize + (S - oy - 8 * sqSize) / 2)
     ctx.fillStyle = '#888'
-    ctx.fillText('Black', ox + sqSize * 4, oy / 2)
+    ctx.fillText('P2', ox + sqSize * 4, oy / 2)
   }
 
   _drawHighlights() {
@@ -1028,17 +1034,18 @@ export class TwoPlayerGame {
     this.board.forEach((_, id) => {
       const [x, y] = this._cellToXY(id)
       const ly = y - sqSize * 0.32
-      const tw = ctx.measureText(id).width
+      const label = sqLabel(sq2col(id), sq2row(id))
+      const tw = ctx.measureText(label).width
       ctx.fillStyle = 'rgba(0,0,0,0.55)'
       ctx.beginPath(); ctx.roundRect(x - tw/2 - 2, ly - fs/2 - 1, tw + 4, fs + 2, 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.fillText(id, x, ly)
+      ctx.fillStyle = '#fff'; ctx.fillText(label, x, ly)
     })
   }
 
   _drawEndOverlay() {
     const { ctx, S, winner, gameOverReason } = this
     const PCOLORS = { white:'#f0e8d0', black:'#333' }
-    const PNAMES  = { white:'White', black:'Black' }
+    const PNAMES  = { white:'P1', black:'P2' }
 
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, S, S)
 
@@ -1056,7 +1063,7 @@ export class TwoPlayerGame {
 
     if (isDraw) {
       ctx.fillStyle = '#ccc'
-      ctx.fillText('Stalemate — Draw', S/2, by + bh * 0.38)
+      ctx.fillText('Stalemate: Draw', S/2, by + bh * 0.38)
     } else {
       ctx.fillStyle = winner === 'white' ? '#f0e8d0' : '#aaa'
       const headline = gameOverReason === 'checkmate' ? `${PNAMES[winner]} wins! Checkmate 👑`
@@ -1066,8 +1073,8 @@ export class TwoPlayerGame {
 
     ctx.font = `${Math.round(S * 0.021)}px system-ui`
     ctx.fillStyle = '#aaa'
-    const sub = gameOverReason === 'checkmate' ? 'No legal moves (king in check)'
-              : 'No legal moves (king not in check)'
+    const sub = gameOverReason === 'checkmate' ? 'King in check'
+              : 'No legal moves'
     ctx.fillText(`${sub} · Press Reset to play again`, S/2, by + bh * 0.72)
   }
 }
@@ -1143,12 +1150,12 @@ function sq4pawnMoves(id, player, board, enPassant) {
   const moves = [], captures = []
   let epCapture = null
 
-  // Starting rank/file
+  // Starting rank/file — must match actual pawn placement in reset()
   const isStart =
-    (player === 'red'    && row === 3)  ||
-    (player === 'blue'   && col === 3)  ||
-    (player === 'yellow' && row === 10) ||
-    (player === 'green'  && col === 10)
+    (player === 'red'    && row === 1)             ||
+    (player === 'blue'   && col === 1)             ||
+    (player === 'yellow' && row === SQ4_SIZE - 2)  ||
+    (player === 'green'  && col === SQ4_SIZE - 2)
 
   const fwd1id = sq4valid(col+dc, row+dr) ? sq4id(col+dc, row+dr) : null
   if (fwd1id && !board.has(fwd1id)) {
@@ -1172,17 +1179,22 @@ function sq4pawnMoves(id, player, board, enPassant) {
     const tgt = sq4id(nc, nr)
     const occ = board.get(tgt)
     if (occ && occ.player !== player) captures.push(tgt)
+  }
 
-    // En passant
-    if (enPassant && enPassant.player !== player) {
-      const adjCol = col+ddc - dc, adjRow = row+ddr - dr
-      if (sq4valid(adjCol, adjRow)) {
-        const pawnHere = sq4id(adjCol, adjRow)
-        if (enPassant.pawnCell === pawnHere && enPassant.skippedCell === tgt && !board.has(tgt)) {
-          captures.push(tgt)
-          epCapture = { to: tgt, capturedCell: pawnHere }
-        }
-      }
+  // En passant — only between opposite players (red↔yellow, blue↔green).
+  const OPPOSITE = { red:'yellow', yellow:'red', blue:'green', green:'blue' }
+  if (enPassant && enPassant.player === OPPOSITE[player]) {
+    const { pawnCell, skippedCell } = enPassant
+    const pc = sq4col(pawnCell), pr = sq4row(pawnCell)
+    // "Beside" means adjacent along the axis perpendicular to the capturer's march.
+    // Vertical marchers (red/yellow, dr≠0): beside = same row, adjacent col.
+    // Horizontal marchers (blue/green, dc≠0): beside = same col, adjacent row.
+    const beside = dr === 0
+      ? (col === pc && Math.abs(row - pr) === 1)
+      : (row === pr && Math.abs(col - pc) === 1)
+    if (beside && !board.has(skippedCell)) {
+      captures.push(skippedCell)
+      epCapture = { to: skippedCell, capturedCell: pawnCell }
     }
   }
 
@@ -1191,10 +1203,9 @@ function sq4pawnMoves(id, player, board, enPassant) {
 
 function sq4isPromotion(id, player) {
   const col = sq4col(id), row = sq4row(id)
-  return (player === 'red' && row === SQ4_SIZE - 1) ||
-         (player === 'blue' && col === SQ4_SIZE - 1) ||
-         (player === 'yellow' && row === 0) ||
-         (player === 'green' && col === 0)
+  const [dc, dr] = sq4pawnDirection(player)
+  // A pawn promotes when it can no longer advance: the next square forward is invalid.
+  return !sq4valid(col + dc, row + dr)
 }
 
 export class FourPlayerGame {
@@ -1206,7 +1217,7 @@ export class FourPlayerGame {
     this.stalemateMode   = opts.stalemateMode ?? 'loss'
     this.enPassantEnabled = opts.enPassant ?? true
     this.p3Colour = opts.p3Colour ?? '#3498db'
-    this.p4Colour = opts.p4Colour ?? '#27ae60'
+    this.p4Colour = opts.p4Colour ?? '#f39c12'
 
     this._onResize = () => { this._sized(); this.render() }
     this._onClick  = e => {
@@ -1316,10 +1327,10 @@ export class FourPlayerGame {
 
   // ── Player colours ───────────────────────────────────────────────────────────
   _pColor(player) {
-    return { red:'#ffffff', blue: this.p3Colour, yellow:this.p4Colour, green: '#000000' }[player]
+    return { red:'#f0e8d0', blue: this.p3Colour, yellow: this.p4Colour, green:'#222222' }[player]
   }
   _pTxt(player) {
-    return { red:'#111', blue: this._textFor(this.p3Colour), yellow:this._textFor(this.p4Colour), green: '#fff' }[player]
+    return { red:'#111', blue: this._textFor(this.p3Colour), yellow: this._textFor(this.p4Colour), green:'#ffffff' }[player]
   }
   _pName(player) {
     return { red:'P1', blue:'P2', yellow:'P3', green:'P4' }[player]
@@ -1485,7 +1496,7 @@ export class FourPlayerGame {
         nextEnPassant = {
           pawnCell:    to,
           skippedCell: sq4id(sq4col(from)+dc, sq4row(from)+dr),
-          player: piece.player,
+          player:      piece.player,
         }
       }
     }
@@ -1541,6 +1552,9 @@ export class FourPlayerGame {
       tries++
     } while (this.eliminated[next] && tries < this.players.length)
     this.currentPlayer = next
+
+    // En passant window expires when the player who double-stepped takes their next turn.
+    if (this.enPassant?.player === next) this.enPassant = null
 
     this._updateCheckStatus()
 
@@ -1668,10 +1682,10 @@ export class FourPlayerGame {
     ctx.font = `bold ${lfs}px system-ui`
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     const mid = ox + sqSize * SQ4_SIZE / 2
-    ctx.fillStyle = this._pColor('red');    ctx.fillText('Red',    mid, oy + SQ4_SIZE * sqSize + (S - oy - SQ4_SIZE*sqSize)/2)
-    ctx.fillStyle = this._pColor('yellow'); ctx.fillText('Yellow', mid, oy / 2)
-    ctx.fillStyle = this._pColor('blue');   ctx.fillText('Blue',   ox / 2, oy + SQ4_SIZE * sqSize / 2)
-    ctx.fillStyle = this._pColor('green');  ctx.fillText('Green',  ox + SQ4_SIZE * sqSize + (S - ox - SQ4_SIZE*sqSize)/2, oy + SQ4_SIZE * sqSize / 2)
+    ctx.fillStyle = this._pColor('red');    ctx.fillText('P1', mid, oy + SQ4_SIZE * sqSize + (S - oy - SQ4_SIZE*sqSize)/2)
+    ctx.fillStyle = this._pColor('yellow'); ctx.fillText('P3', mid, oy / 2)
+    ctx.fillStyle = this._pColor('blue');   ctx.fillText('P2', ox / 2, oy + SQ4_SIZE * sqSize / 2)
+    ctx.fillStyle = this._pColor('green');  ctx.fillText('P4', ox + SQ4_SIZE * sqSize + (S - ox - SQ4_SIZE*sqSize)/2, oy + SQ4_SIZE * sqSize / 2)
   }
 
   _drawHighlights() {
@@ -1748,10 +1762,11 @@ export class FourPlayerGame {
     this.board.forEach((_, id) => {
       const [x, y] = this._cellToXY(id)
       const ly = y - sqSize * 0.3
-      const tw = ctx.measureText(id).width
+      const label = sqLabel(sq4col(id), sq4row(id))
+      const tw = ctx.measureText(label).width
       ctx.fillStyle = 'rgba(0,0,0,0.55)'
       ctx.beginPath(); ctx.roundRect(x - tw/2 - 2, ly - fs/2 - 1, tw + 4, fs + 2, 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.fillText(id, x, ly)
+      ctx.fillStyle = '#fff'; ctx.fillText(label, x, ly)
     })
   }
 
@@ -1772,7 +1787,7 @@ export class FourPlayerGame {
     ctx.font = `bold ${Math.round(S * 0.042)}px system-ui`
 
     if (isDraw) {
-      ctx.fillStyle = '#ccc'; ctx.fillText('Stalemate — Draw', S/2, by + bh * 0.38)
+      ctx.fillStyle = '#ccc'; ctx.fillText('Stalemate: Draw', S/2, by + bh * 0.38)
     } else {
       ctx.fillStyle = this._pColor(winner)
       const headline = gameOverReason === 'checkmate' ? `${this._pName(winner)} wins! Checkmate 👑`
@@ -1783,8 +1798,8 @@ export class FourPlayerGame {
 
     ctx.font = `${Math.round(S * 0.021)}px system-ui`
     ctx.fillStyle = '#aaa'
-    const sub = gameOverReason === 'checkmate' ? 'No legal moves (king in check)'
-              : gameOverReason === 'stalemate' ? 'No legal moves (king not in check)'
+    const sub = gameOverReason === 'checkmate' ? 'King in check'
+              : gameOverReason === 'stalemate' ? 'No legal moves'
               : 'King captured'
     ctx.fillText(`${sub} · Press Reset to play again`, S/2, by + bh * 0.72)
   }
@@ -2485,6 +2500,9 @@ export class ThreePlayerGame {
     }
     this.currentPlayer = next
 
+    // En passant window expires when the player who double-stepped takes their next turn.
+    if (this.enPassant?.player === next) this.enPassant = null
+
     this._updateCheckStatus()
 
     if (twoKings) {
@@ -2534,7 +2552,7 @@ export class ThreePlayerGame {
         this.hudEl.badge.textContent = 'Draw'
         this.hudEl.badge.style.background = '#555'
         this.hudEl.badge.style.color = '#fff'
-        this.hudEl.status.textContent = 'Stalemate (no legal moves)'
+        this.hudEl.status.textContent = 'Stalemate'
       } else if (this.winner) {
         const reason = this.gameOverReason === 'checkmate' ? 'Checkmate'
                     : this.gameOverReason === 'stalemate' ? 'Stalemate'

@@ -250,21 +250,57 @@ body.in-game #game-panel{display:flex}
     <button class="play-btn" id="play-btn" style="display:none">▶ Play</button>
   </div>
 
-  <div class="stalemate-row" id="stalemate-row" style="display:none">
+  <!-- 2P rule toggles -->
+  <div class="stalemate-row" id="stalemate-row-2" style="display:none">
     <span>Stalemate →</span>
-    <select id="stalemate-select" onchange="setStalemate(this.value)">
+    <select id="stalemate-select-2" onchange="setStalemate(this.value)">
+      <option value="draw" selected>Draw</option>
+      <option value="loss">Loss</option>
+    </select>
+    <label class="ep-toggle">
+      <input type="checkbox" id="en-passant-toggle-2" checked onchange="setEnPassant(this.checked)" />
+      En passant
+    </label>
+  </div>
+
+  <!-- 3P rule toggles -->
+  <div class="stalemate-row" id="stalemate-row-3" style="display:none">
+    <span>Stalemate →</span>
+    <select id="stalemate-select-3" onchange="setStalemate(this.value)">
       <option value="loss" selected>Loss</option>
       <option value="draw">Draw</option>
     </select>
     <label class="ep-toggle">
-      <input type="checkbox" id="en-passant-toggle" checked onchange="setEnPassant(this.checked)" />
+      <input type="checkbox" id="en-passant-toggle-3" checked onchange="setEnPassant(this.checked)" />
       En passant
     </label>
-
     <label class="ep-toggle">
       P3 colour
       <input type="color" id="p3-colour" value="#3498db"
             onchange="setP3Colour(this.value)" />
+    </label>
+  </div>
+
+  <!-- 4P rule toggles -->
+  <div class="stalemate-row" id="stalemate-row-4" style="display:none">
+    <span>Stalemate →</span>
+    <select id="stalemate-select-4" onchange="setStalemate(this.value)">
+      <option value="loss" selected>Loss</option>
+      <option value="draw">Draw</option>
+    </select>
+    <label class="ep-toggle">
+      <input type="checkbox" id="en-passant-toggle-4" checked onchange="setEnPassant(this.checked)" />
+      En passant
+    </label>
+    <label class="ep-toggle">
+      P2 colour
+      <input type="color" id="p3-colour-4" value="#3498db"
+            onchange="setP3Colour(this.value)" />
+    </label>
+    <label class="ep-toggle">
+      P3 colour
+      <input type="color" id="p4-colour-4" value="#f39c12"
+            onchange="setP4Colour(this.value)" />
     </label>
   </div>
 
@@ -351,7 +387,10 @@ function selectPlayers(n) {
     playBtn.style.display = 'none'
   }
 
-  document.getElementById('stalemate-row').style.display = (n === 3) ? 'flex' : 'none'
+  // Show only the relevant rule-toggle row
+  document.getElementById('stalemate-row-2').style.display = (n === 2) ? 'flex' : 'none'
+  document.getElementById('stalemate-row-3').style.display = (n === 3) ? 'flex' : 'none'
+  document.getElementById('stalemate-row-4').style.display = (n === 4) ? 'flex' : 'none'
 
   drawViewer(n)
 }
@@ -381,81 +420,34 @@ function drawViewer(n) {
   `
 }
 
-// ── Launch / exit game (full-screen takeover) ─────────────────────────────────
-document.getElementById('play-btn').addEventListener('click', () => {
-  switch (activeN) {
-    case 2:
-      launchGame2P()
-      break
-
-    case 3:
-      launchGame3P()
-      break
-
-    case 4:
-      launchGame4P()
-      break
-  }
-})
-
+// ── Canvas sizing ────────────────────────────────────────────────────────────
 function sizeGameCanvas() {
   const wrap = document.getElementById('game-canvas-wrap')
   const gc   = document.getElementById('game-canvas')
-  // Use the wrap's actual laid-out box (after in-game class + flex have applied)
-  // rather than raw viewport numbers, and leave a small margin so the board
-  // never touches the wrap edges.
   const rect = wrap.getBoundingClientRect()
   const S = Math.max(200, Math.min(rect.width, rect.height) - 24)
   gc.width  = S
   gc.height = S
 }
 
-function launchGame2P() {
-  inGame = true
-  gameInst?.destroy()
-  gameInst = null
-
-  document.body.classList.add('in-game')
-
-  requestAnimationFrame(() => {
-    sizeGameCanvas()
-
-    const gc = document.getElementById('game-canvas')
-
-    const hudEl = {
-      hud: document.getElementById('hud'),
-      badge: document.getElementById('turn-badge'),
-      status: document.getElementById('game-status'),
-    }
-
-    gameInst = new TwoPlayerGame(gc, hudEl)
-  })
-}
-
-function launchGame3P() {
+// ── Generic launch helper ─────────────────────────────────────────────────────
+function launchGame(constructFn) {
   inGame = true
   gameInst?.destroy()
   gameInst = null
   document.body.classList.add('in-game')
 
-  // Defer initialisation by one frame so the browser has laid out the
-  // full-screen game panel before we measure its dimensions.
   requestAnimationFrame(() => {
     sizeGameCanvas()
     const gc = document.getElementById('game-canvas')
-
     const hudEl = {
       hud:    document.getElementById('hud'),
       badge:  document.getElementById('turn-badge'),
       status: document.getElementById('game-status'),
     }
-    
+    gameInst = constructFn(gc, hudEl)
 
-    const stalemateMode = document.getElementById('stalemate-select').value
-    const enPassant = document.getElementById('en-passant-toggle').checked
-    const p3Colour  = document.getElementById('p3-colour').value
-    gameInst = new ThreePlayerGame(gc, hudEl, { stalemateMode, enPassant, p3Colour })
-
+    // Re-attach promotion listeners each launch (canvas is reused)
     gc.addEventListener('promotion', () => {
       document.getElementById('promo-modal').classList.add('open')
     })
@@ -465,49 +457,58 @@ function launchGame3P() {
   })
 }
 
-function launchGame4P() {
-  inGame = true
-  gameInst?.destroy()
-  gameInst = null
-
-  document.body.classList.add('in-game')
-
-  requestAnimationFrame(() => {
-    sizeGameCanvas()
-
-    const gc = document.getElementById('game-canvas')
-
-    const hudEl = {
-      hud: document.getElementById('hud'),
-      badge: document.getElementById('turn-badge'),
-      status: document.getElementById('game-status'),
-    }
-
-    gameInst = new FourPlayerGame(gc, hudEl)
+function launchGame2P() {
+  launchGame((gc, hudEl) => {
+    const stalemateMode = document.getElementById('stalemate-select-2').value
+    const enPassant     = document.getElementById('en-passant-toggle-2').checked
+    return new TwoPlayerGame(gc, hudEl, { stalemateMode, enPassant })
   })
 }
+
+function launchGame3P() {
+  launchGame((gc, hudEl) => {
+    const stalemateMode = document.getElementById('stalemate-select-3').value
+    const enPassant     = document.getElementById('en-passant-toggle-3').checked
+    const p3Colour      = document.getElementById('p3-colour').value
+    return new ThreePlayerGame(gc, hudEl, { stalemateMode, enPassant, p3Colour })
+  })
+}
+
+function launchGame4P() {
+  launchGame((gc, hudEl) => {
+    const stalemateMode = document.getElementById('stalemate-select-4').value
+    const enPassant     = document.getElementById('en-passant-toggle-4').checked
+    const p3Colour      = document.getElementById('p3-colour-4').value
+    const p4Colour      = document.getElementById('p4-colour-4').value
+    return new FourPlayerGame(gc, hudEl, { stalemateMode, enPassant, p3Colour, p4Colour })
+  })
+}
+
+// ── Launch / exit ─────────────────────────────────────────────────────────────
+document.getElementById('play-btn').addEventListener('click', () => {
+  if      (activeN === 2) launchGame2P()
+  else if (activeN === 3) launchGame3P()
+  else if (activeN === 4) launchGame4P()
+})
 
 window.exitGame = function() {
   inGame   = false
   gameInst?.destroy()
   gameInst = null
-  gameInst = null
   document.body.classList.remove('in-game')
   document.getElementById('promo-modal').classList.remove('open')
-
-  const playBtn = document.getElementById('play-btn')
-  playBtn.textContent = '▶ Play'
-
+  document.getElementById('play-btn').textContent = '▶ Play'
   drawViewer(activeN)
 }
 
 // ── Game control globals ──────────────────────────────────────────────────────
-window.resetGame    = () => gameInst?.reset()
-window.toggleCoords = () => gameInst?.toggleCoords()
+window.resetGame     = () => gameInst?.reset()
+window.toggleCoords  = () => gameInst?.toggleCoords()
 window.pickPromotion = type => gameInst?.choosePromotion(type)
 window.setStalemate  = mode => gameInst?.setStalemateMode(mode)
 window.setEnPassant  = enabled => gameInst?.setEnPassantEnabled(enabled)
-window.setP3Colour = hex => gameInst?.setP3Colour(hex)
+window.setP3Colour   = hex => gameInst?.setP3Colour(hex)
+window.setP4Colour   = hex => gameInst?.setP4Colour(hex)
 
 // ── Resize handling ───────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
