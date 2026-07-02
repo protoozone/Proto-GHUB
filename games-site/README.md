@@ -8,7 +8,7 @@ Src contains the Home and About pages as well as the Game Page router, and all g
 The game router is in data under games.js, and the midi player is in public. 
 
 # Current Status
-The project currently hosts Big Worm and the main page. 
+The project currently hosts Big Worm, 2 3 and 4 player chess, and the main page. 
 
 # Local Installation and Running
 ```
