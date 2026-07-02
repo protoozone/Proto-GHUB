@@ -29,7 +29,7 @@ Vercel
 
 # Roadmap
 Up next for implementation:
-- A high variety chess game
+- More rule and handicap varieties for chess
 - Sweeping mines
 - Konkey Dong
 - Invaders who came from space
