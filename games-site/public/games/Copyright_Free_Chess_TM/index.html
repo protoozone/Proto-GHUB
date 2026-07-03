@@ -238,7 +238,23 @@ body.in-game #game-panel{display:flex}
     <p class="sub">Multi-player board system</p>
   </header>
 
-  <a class="back-btn" onclick="window.history.back()">← Back to Hub</a>
+  <button class="back-btn" onclick="returnToHub()">← Back To Hub</button>
+  <script>
+    function returnToHub() {
+      if (window.parent !== window) {
+        window.parent.postMessage('returnToHub', '*')
+      } else {
+        alert("This game is currently running on your device. To return to the hub, please visit the website or install it locally.")
+      }
+    }
+  </script>
+
+  <script>
+    function navigateToHub() {
+      window.history.pushState({}, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  </script>
 
   <div class="selector">
     <span class="selector-label">Number of players</span>
@@ -337,8 +353,8 @@ body.in-game #game-panel{display:flex}
   </div>
 </div>
 
-<script type="module">
-import { buildBoard, renderBoard, TwoPlayerGame, ThreePlayerGame, FourPlayerGame } from './game.js'
+<script src="./game.js"></script>
+<script>
 
 // ── Config ──────────────────────────────────────────────────────────────────
 const PLAYER_OPTIONS = [2, 3, 4, 5, 6, 8, 16]

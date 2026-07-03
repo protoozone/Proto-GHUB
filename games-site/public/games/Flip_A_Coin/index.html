@@ -161,9 +161,18 @@ h2 {
       GeeksforGeeks
     </h1>
     <div>
-    <button onclick="window.history.back()">
-        Back to Hub
-    </button>
+        
+    <button onclick="returnToHub()">← Back To Hub</button>
+    <script>
+    function returnToHub() {
+        if (window.parent !== window) {
+            window.parent.postMessage('returnToHub', '*')
+        } else {
+            alert("This game is currently running on your device. To return to the hub, please visit the website or install it locally.")
+        }
+    }
+    </script>
+
     </div>
     <h3>
       Coin Toss using HTML,

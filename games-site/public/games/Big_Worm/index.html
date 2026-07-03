@@ -179,7 +179,17 @@
     </div>
   </div>
 
-  <button class="opt-btn" onclick="window.history.back()">← BACK TO HUB</button>
+  <button class="opt-btn" onclick="returnToHub()">← Back To Hub</button>
+  <script>
+    function returnToHub() {
+      if (window.parent !== window) {
+        window.parent.postMessage('returnToHub', '*')
+      } else {
+        alert("This game is currently running on your device. To return to the hub, please visit the website or install it locally.")
+      }
+    }
+  </script>
+
   <div id="menu">
     <h1>BIG WORM</h1>
     <div class="option-group">
@@ -210,7 +220,7 @@
 
   <canvas id="game"></canvas>
 
-  <script src="/midi_player.js"></script>
-  <script src="/games/Big_Worm/game.js"></script>
+  <script src="./midi_player.js"></script>
+  <script src="./game.js"></script>
 </body>
 </html>

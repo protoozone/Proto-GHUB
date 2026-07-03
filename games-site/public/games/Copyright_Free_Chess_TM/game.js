@@ -182,7 +182,7 @@ function build16Player() {
   return { squares, adj, type:'16p' }
 }
 
-export function buildBoard(playerCount) {
+function buildBoard(playerCount) {
   switch(playerCount){
     case 1: case 2: return build2Player()
     case 3:  return build3Player()
@@ -398,7 +398,7 @@ function render16P(ctx,board,W,H){
   renderGrid(ctx,board,ox,oy,sq,SIZE,SIZE,isValid)
 }
 
-export function renderBoard(canvas,board,playerCount){
+function renderBoard(canvas,board,playerCount){
   const ctx=canvas.getContext('2d'),W=canvas.width,H=canvas.height
   ctx.fillStyle=BG;ctx.fillRect(0,0,W,H)
   switch(board.type){
@@ -522,7 +522,7 @@ function sq2isPromotion(id, player) {
 // We'll compute them dynamically at render time from canvas size.
 const SQ2_COLS = 8, SQ2_ROWS = 8
 
-export class TwoPlayerGame {
+class TwoPlayerGame {
   constructor(canvas, hudEl, opts = {}) {
     this.canvas = canvas
     this.ctx    = canvas.getContext('2d')
@@ -1208,7 +1208,7 @@ function sq4isPromotion(id, player) {
   return !sq4valid(col + dc, row + dr)
 }
 
-export class FourPlayerGame {
+class FourPlayerGame {
   constructor(canvas, hudEl, opts = {}) {
     this.canvas = canvas
     this.ctx    = canvas.getContext('2d')
@@ -2083,7 +2083,7 @@ function castleMoveInfo(king, rook) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // ThreePlayerGame — exported class
 // ═══════════════════════════════════════════════════════════════════════════════
-export class ThreePlayerGame {
+class ThreePlayerGame {
   /**
    * @param canvas   HTMLCanvasElement
    * @param hudEl    { hud, badge, status } DOM refs
@@ -2835,3 +2835,9 @@ export class ThreePlayerGame {
     return (r + g + b) < 300 ? '#fff' : '#000'
   }
 }
+
+window.buildBoard = buildBoard
+window.renderBoard = renderBoard
+window.TwoPlayerGame = TwoPlayerGame
+window.ThreePlayerGame = ThreePlayerGame
+window.FourPlayerGame = FourPlayerGame
