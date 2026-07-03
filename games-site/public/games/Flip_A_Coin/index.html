@@ -1,195 +1,353 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<style>
-    * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
-
-body {
-    font-family: "Arial", sans-serif;
-    background: linear-gradient(
-        135deg,
-        #f4fb8f,
-        #ff6b6b
-    );
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    margin: 0;
-}
-
-.coin-container {
-    background-color: rgba(
-        255,
-        255,
-        255,
-        0.9
-    );
-    border-radius: 20px;
-    box-shadow: 0 10px 20px
-        rgba(0, 0, 0, 0.3);
-    padding: 2rem;
-    text-align: center;
-    animation: fadeIn 1s ease;
-    width: 80%;
-    max-width: 500px;
-    perspective: 1000px;
-}
-
-h1 {
-    color: #1ca00a;
-    font-size: 2.5rem;
-    margin: 0 0 1rem;
-    text-shadow: 2px 2px 4px
-        rgba(0, 0, 0, 0.2);
-}
-
-.coin {
-    width: 150px;
-    height: 150px;
-    border-radius: 50%;
-    overflow: hidden;
-    box-shadow: 0 8px 20px
-        rgba(0, 0, 0, 0.2);
-    transition: transform 0.5s
-        ease-in-out;
-    margin: 0 auto;
-    backface-visibility: hidden;
-}
-
-button {
-    background-color: #4e6bff;
-    color: #fff;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 10px;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: background-color 0.3s
-            ease-in-out,
-        transform 0.2s ease-in-out;
-    width: 100%;
-    margin-top: 20px;
-}
-
-button:hover {
-    background-image: linear-gradient(
-        45deg,
-        #4e6bff,
-        #ff6b6b
-    );
-    transform: scale(1.05);
-}
-
-.result {
-    margin-top: 20px;
-    font-size: 24px;
-    color: #333;
-    transition: opacity 0.5s ease-in-out;
-    opacity: 0;
-    text-transform: uppercase;
-    font-weight: bold;
-    text-shadow: 1px 1px 2px
-        rgba(0, 0, 0, 0.4);
-    letter-spacing: 2px;
-}
-
-.coin:hover {
-    transform: scale(1.1);
-    transition: transform 0.3s
-        ease-in-out;
-}
-
-@keyframes spin {
-    0% {
-        transform: rotateY(0deg);
-    }
-    100% {
-        transform: rotateY(360deg);
-    }
-}
-
-.coin.flip {
-    animation: spin 1s
-        cubic-bezier(0.4, 2.5, 0.6, 0.5);
-}
-
-.coin img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center;
-    transform: rotateY(0deg);
-}
-
-.coin-container {
-    background-color: #fff;
-    padding: 20px;
-    border-radius: 10px;
-    box-shadow: 0 4px 10px
-        rgba(0, 0, 0, 0.2);
-    transition: transform 0.5s
-        ease-in-out;
-}
-
-.coin-container:hover {
-    transform: scale(1.02);
-}
-
-h2 {
-    color: #333;
-    font-size: 24px;
-    margin: 10px 0;
-}
-</style>
-
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" 
-        content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="style.css" />
   <title>Coin Toss</title>
-</head>
-
-<body>
-  <div class="coin-container">
-    <h1 class="title">
-      GeeksforGeeks
-    </h1>
-    <div>
-        
-    <button onclick="returnToHub()">← Back To Hub</button>
-    <script>
-    function returnToHub() {
-        if (window.parent !== window) {
-            window.parent.postMessage('returnToHub', '*')
-        } else {
-            alert("This game is currently running on your device. To return to the hub, please visit the website or install it locally.")
-        }
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #2c1a0e;
+      background-image:
+        repeating-linear-gradient(92deg,  transparent, transparent 38px, rgba(0,0,0,0.07) 38px, rgba(0,0,0,0.07) 40px),
+        repeating-linear-gradient(180deg, transparent, transparent 60px, rgba(0,0,0,0.05) 60px, rgba(0,0,0,0.05) 62px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      font-family: monospace;
+      color: #f0e6d0;
+      gap: 12px;
+      overflow: hidden;
     }
-    </script>
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid rgba(240,230,208,0.35);
+      color: #c8a882;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 8px 20px;
+      border-radius: 999px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: border-color 0.12s, color 0.12s;
+    }
+    .btn-ghost:hover { border-color: #f0e6d0; color: #f0e6d0; }
 
+    #top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 560px;
+      max-width: 98vw;
+    }
+    #top-bar h1 {
+      font-size: 20px;
+      color: #d4aa70;
+      letter-spacing: 5px;
+      text-shadow: 0 0 20px rgba(212,170,112,0.25);
+    }
+    #skip-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: #8a7060;
+      letter-spacing: 1px;
+      cursor: pointer;
+      user-select: none;
+    }
+    #skip-toggle .toggle-track {
+      width: 32px; height: 16px;
+      background: rgba(240,230,208,0.12);
+      border: 1px solid rgba(240,230,208,0.22);
+      border-radius: 999px;
+      position: relative;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    #skip-toggle .toggle-thumb {
+      position: absolute;
+      left: 2px; top: 2px;
+      width: 10px; height: 10px;
+      background: #8a7060;
+      border-radius: 50%;
+      transition: left 0.15s, background 0.15s;
+    }
+    #skip-toggle.on .toggle-track  { background: rgba(240,230,208,0.25); border-color: #f0e6d0; }
+    #skip-toggle.on .toggle-thumb  { left: 18px; background: #f0e6d0; }
+    #skip-toggle.on                { color: #f0e6d0; }
+
+    #game-wrapper {
+      display: flex;
+      flex-direction: row;
+      gap: 24px;
+      align-items: flex-start;
+    }
+    #main-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    #table-surface {
+      width: 340px;
+      height: 340px;
+      background: #3d2512;
+      background-image:
+        repeating-linear-gradient(88deg, transparent, transparent 22px, rgba(255,255,255,0.025) 22px, rgba(255,255,255,0.025) 24px);
+      border: 2px solid #5a3820;
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    #table-surface::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 30% 25%, rgba(255,255,255,0.04) 0%, transparent 65%);
+      pointer-events: none;
+    }
+
+    #coin-scene {
+      position: absolute;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      width: 110px; height: 110px;
+      perspective: 500px;
+      pointer-events: none;
+    }
+    #coin {
+      width: 110px; height: 110px;
+      position: relative;
+      transform-style: preserve-3d;
+      transform: rotateY(0deg);
+      will-change: transform;
+    }
+    .coin-face {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #face-heads {
+      background:
+        linear-gradient(118deg,
+          transparent 30%,
+          rgba(255,255,255,0.55) 46%,
+          rgba(255,255,255,0.18) 52%,
+          transparent 62%
+        ),
+        radial-gradient(circle at 42% 38%,
+          #e8d8a0 0%,
+          #c0984a 35%,
+          #8a6828 65%,
+          #5a4018 100%
+        );
+      box-shadow: inset 0 1px 3px rgba(255,255,255,0.2), inset 0 -2px 6px rgba(0,0,0,0.5);
+    }
+    #face-heads::after {
+      content: '';
+      position: absolute;
+      inset: 7px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+    #face-tails {
+      background:
+        linear-gradient(118deg,
+          transparent 30%,
+          rgba(255,255,255,0.45) 46%,
+          rgba(255,255,255,0.14) 52%,
+          transparent 62%
+        ),
+        radial-gradient(circle at 58% 40%,
+          #ddd090 0%,
+          #b08840 35%,
+          #7a5820 65%,
+          #4a3010 100%
+        );
+      transform: rotateY(180deg);
+      box-shadow: inset 0 1px 3px rgba(255,255,255,0.18), inset 0 -2px 6px rgba(0,0,0,0.55);
+    }
+    #face-tails::after {
+      content: '';
+      position: absolute;
+      inset: 7px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+    .face-icon {
+      z-index: 1;
+      pointer-events: none;
+      filter: drop-shadow(0 1px 0 rgba(255,255,255,0.3));
+    }
+    #coin-edge {
+      position: absolute;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%) rotateY(90deg);
+      width: 10px; height: 110px;
+      background: repeating-linear-gradient(180deg, #7a5525 0px, #b08840 3px, #6a4818 6px);
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+
+    #result-text {
+      font-size: 20px;
+      color: #d4aa70;
+      letter-spacing: 4px;
+      min-height: 28px;
+      text-align: center;
+      text-shadow: 0 0 16px rgba(212,170,112,0.4);
+    }
+    #prompt {
+      font-size: 12px;
+      color: #6a5040;
+      letter-spacing: 2px;
+      text-align: center;
+      transition: opacity 0.3s;
+    }
+
+    #sidebar {
+      width: 180px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .sidebar-block {
+      border: 1px solid #5a3820;
+      border-radius: 6px;
+      padding: 12px;
+      background: rgba(0,0,0,0.15);
+    }
+    .sidebar-title {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: #8a7060;
+      margin-bottom: 10px;
+    }
+    .dist-row {
+      display: none;          /* hidden until that outcome is seen */
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 7px;
+      font-size: 11px;
+    }
+    .dist-label { width: 38px; color: #a08060; letter-spacing: 1px; }
+    .dist-bar-track {
+      flex: 1; height: 4px;
+      background: #3d2512;
+      border-radius: 2px;
+      position: relative;
+    }
+    .dist-bar-fill {
+      position: absolute; left: 0; top: 0; height: 100%;
+      background: #d4aa70;
+      border-radius: 2px;
+      transition: width 0.4s ease;
+    }
+    .dist-bar-fill.side { background: #c06030; }
+    .dist-count { width: 22px; text-align: right; color: #8a7060; font-size: 10px; }
+
+    #history-list {
+      display: flex; flex-direction: column; gap: 4px;
+      max-height: 220px; overflow-y: auto;
+    }
+    #history-list::-webkit-scrollbar { width: 3px; }
+    #history-list::-webkit-scrollbar-thumb { background: #5a3820; border-radius: 2px; }
+    .history-item {
+      font-size: 11px; color: #8a7060; letter-spacing: 1px;
+      padding: 2px 0;
+      border-bottom: 1px solid rgba(90,56,32,0.3);
+      display: flex; justify-content: space-between;
+    }
+    .history-item .h-result      { color: #c8a882; }
+    .history-item .h-result.side { color: #c06030; }
+  </style>
+</head>
+<body>
+
+  <button class="btn-ghost" onclick="returnToHub()">← Back To Hub</button>
+
+  <div id="top-bar">
+    <h1>COIN TOSS</h1>
+    <div id="skip-toggle">
+      SKIP ANIM
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
     </div>
-    <h3>
-      Coin Toss using HTML,
-      CSS, and JavaScript
-    </h3>
-    <br />
-    <div class="coin" id="coin">
-      <img src=
-"https://media.geeksforgeeks.org/wp-content/uploads/20231016151806/tails.png" 
-           alt="Heads" />
-    </div>
-    <button id="toss-button">
-      Toss Coin
-    </button>
   </div>
-  <p class="result"></p>
+
+  <div id="game-wrapper">
+    <div id="main-area">
+      <div id="table-surface">
+        <div id="coin-scene">
+          <div id="coin">
+
+            <!-- HEADS: speaking head emoji, tinted to match coin impression -->
+            <div class="coin-face" id="face-heads">
+              <span class="face-icon" style="font-size:58px;line-height:1;filter:sepia(1) saturate(0.4) brightness(0.45) drop-shadow(0 1px 0 rgb(100, 77, 15));">🗣️</span>
+            </div>
+
+            <!-- TAILS: rotated square diamond -->
+            <div class="coin-face" id="face-tails">
+              <svg class="face-icon" width="82" height="82" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- outer diamond -->
+                <path d="M24 4 L44 24 L24 44 L4 24 Z" fill="rgba(40,22,6,0.65)" stroke="rgba(255,240,200,0.35)" stroke-width="1"/>
+                <!-- inner diamond (inset detail) -->
+                <path d="M24 11 L37 24 L24 37 L11 24 Z" fill="none" stroke="rgba(255,240,200,0.25)" stroke-width="1"/>
+                <!-- centre dot -->
+                <circle cx="24" cy="24" r="2.5" fill="rgba(255,240,200,0.4)"/>
+              </svg>
+            </div>
+
+            <div id="coin-edge"></div>
+          </div>
+        </div>
+      </div>
+      <div id="result-text"></div>
+      <div id="prompt">CLICK TO FLIP</div>
+    </div>
+
+    <div id="sidebar">
+      <div class="sidebar-block">
+        <div class="sidebar-title">DISTRIBUTION</div>
+        <div class="dist-row" id="row-heads">
+          <span class="dist-label">HEADS</span>
+          <div class="dist-bar-track"><div class="dist-bar-fill" id="bar-heads" style="width:0%"></div></div>
+          <span class="dist-count" id="count-heads">0</span>
+        </div>
+        <div class="dist-row" id="row-tails">
+          <span class="dist-label">TAILS</span>
+          <div class="dist-bar-track"><div class="dist-bar-fill" id="bar-tails" style="width:0%"></div></div>
+          <span class="dist-count" id="count-tails">0</span>
+        </div>
+        <div class="dist-row" id="row-side">
+          <span class="dist-label">SIDE</span>
+          <div class="dist-bar-track"><div class="dist-bar-fill side" id="bar-side" style="width:0%"></div></div>
+          <span class="dist-count" id="count-side">0</span>
+        </div>
+      </div>
+      <div class="sidebar-block">
+        <div class="sidebar-title">HISTORY</div>
+        <div id="history-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function returnToHub() {
+      if (window.parent !== window) {
+        window.parent.postMessage('returnToHub', '*');
+      } else {
+        alert("Running standalone — visit the hub to navigate.");
+      }
+    }
+  </script>
   <script src="./game.js"></script>
 </body>
-
 </html>
