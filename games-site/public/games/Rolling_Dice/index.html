@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Dice Roller</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: radial-gradient(ellipse at center, #c8b4e8 0%, #7c4daa 55%, #3a1a5c 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: monospace;
+      color: #f0eaff;
+      gap: 12px;
+      overflow: hidden;
+    }
+
+    #scene-frame {
+      position: relative;
+      border: 18px solid #7a4a20;
+      box-shadow:
+        inset  3px  3px 0 #b07840,
+        inset -3px -3px 0 #3a1a06,
+        0 8px 32px rgba(0,0,0,0.6);
+      border-radius: 4px;
+    }
+
+    #canvas { display: block; width: 540px; height: 400px; }
+
+    #top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 576px;
+    }
+    #top-bar h1 {
+      font-size: 20px;
+      letter-spacing: 5px;
+      color: #e8d8ff;
+      text-shadow: 0 0 20px rgba(200,180,255,0.4);
+    }
+
+    /* ── buttons ── */
+    .btn {
+      background: #ffffff;
+      border: none;
+      color: #2a0a4a;
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 9px 22px;
+      border-radius: 999px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: background 0.1s, transform 0.08s;
+    }
+    .btn:hover  { background: #f0e8ff; }
+    .btn:active { transform: scale(0.96); }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.35);
+      color: #d8c8ff;
+      font-family: monospace;
+      font-size: 13px;
+      padding: 8px 20px;
+      border-radius: 999px;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: border-color 0.1s, color 0.1s;
+    }
+    .btn-ghost:hover { border-color: #fff; color: #fff; }
+
+    /* ── die selector ── */
+    #die-selector {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .die-btn {
+      background: #fff;
+      border: 3px solid transparent;
+      border-radius: 14px;
+      width: 62px;
+      height: 62px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+      position: relative;
+    }
+    .die-btn:hover { transform: scale(1.08); box-shadow: 0 0 0 3px rgba(200,180,232,0.6); }
+    .die-btn:active { transform: scale(0.97); }
+    .die-btn span {
+      font-family: monospace;
+      font-size: 10px;
+      font-weight: 700;
+      color: #3a1a5c;
+      letter-spacing: 1px;
+    }
+    /* badge showing how many of this die are queued */
+    .die-btn .badge {
+      position: absolute;
+      top: -6px; right: -6px;
+      background: #7c4daa;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      min-width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 0 4px;
+      border: 2px solid #fff;
+    }
+    .die-btn.has-count .badge { display: flex; }
+
+    /* ── queue display ── */
+    #queue-display {
+      font-size: 12px;
+      color: #c8b4f8;
+      letter-spacing: 2px;
+      min-height: 18px;
+      text-align: center;
+    }
+
+    /* ── controls row ── */
+    #controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 576px;
+      justify-content: space-between;
+    }
+
+    /* ── modifier input ── */
+    #mod-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #c8b4f8;
+      letter-spacing: 1px;
+    }
+    #mod-input {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 999px;
+      color: #fff;
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: 700;
+      width: 58px;
+      padding: 5px 10px;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.1s;
+    }
+    #mod-input:focus { border-color: #fff; }
+    /* hide spin arrows */
+    #mod-input::-webkit-inner-spin-button,
+    #mod-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+    /* ── result ── */
+    #result-display {
+      font-size: 14px;
+      letter-spacing: 2px;
+      color: #e8d8ff;
+      text-shadow: 0 0 16px rgba(200,180,255,0.4);
+      min-height: 28px;
+      text-align: center;
+      line-height: 1.8;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+
+  <button class="btn-ghost" onclick="returnToHub()">← Back To Hub</button>
+
+  <div id="top-bar">
+    <h1>DICE ROLLER</h1>
+    <div id="die-selector">
+
+      <button class="die-btn" data-die="d4" title="D4 — click to add">
+        <svg width="30" height="30" viewBox="0 0 32 32">
+          <polygon points="16,3 30,29 2,29" fill="#00c8d4" stroke="#007a82" stroke-width="1.5" stroke-linejoin="round"/>
+          <text x="16" y="24" text-anchor="middle" font-family="monospace" font-size="9" font-weight="bold" fill="#003a3e">4</text>
+        </svg>
+        <span>D4</span>
+        <div class="badge" id="badge-d4">0</div>
+      </button>
+
+      <button class="die-btn" data-die="d6" title="D6 — click to add">
+        <svg width="28" height="28" viewBox="0 0 30 30">
+          <rect x="2" y="2" width="26" height="26" rx="5" fill="#d42040" stroke="#8a0820" stroke-width="1.5"/>
+          <text x="15" y="21" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold" fill="#fff0f2">6</text>
+        </svg>
+        <span>D6</span>
+        <div class="badge" id="badge-d6">0</div>
+      </button>
+
+    </div>
+  </div>
+
+  <div id="scene-frame">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="queue-display"></div>
+  <div id="result-display"></div>
+
+  <div id="controls">
+    <button class="btn-ghost" id="clear-btn">CLEAR</button>
+
+    <div id="mod-wrap">
+      MOD
+      <input id="mod-input" type="number" value="0" step="1" placeholder="0"/>
+    </div>
+
+    <button class="btn" id="roll-btn">ROLL</button>
+  </div>
+
+  <script>
+    function returnToHub() {
+      if (window.parent !== window) window.parent.postMessage('returnToHub', '*');
+      else alert("Running standalone — visit the hub to navigate.");
+    }
+
+    // Badge / queue management (mirrors game.js diceQueue)
+    const _counts = { d4: 0, d6: 0 };
+
+    document.querySelectorAll('.die-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const t = btn.dataset.die;
+        _counts[t]++;
+        refreshBadges();
+      });
+    });
+
+    document.getElementById('roll-btn').addEventListener('click', resetBadges);
+    document.getElementById('clear-btn').addEventListener('click', resetBadges);
+
+    function refreshBadges() {
+      for (const [t, n] of Object.entries(_counts)) {
+        const badge = document.getElementById(`badge-${t}`);
+        const btn   = document.querySelector(`.die-btn[data-die="${t}"]`);
+        if (!badge || !btn) continue;
+        badge.textContent = n;
+        btn.classList.toggle('has-count', n > 0);
+      }
+    }
+
+    function resetBadges() {
+      for (const t of Object.keys(_counts)) _counts[t] = 0;
+      refreshBadges();
+    }
+  </script>
+
+  <script src="./game.js"></script>
+</body>
+</html>
