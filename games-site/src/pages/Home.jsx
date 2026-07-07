@@ -3,8 +3,6 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 const styles = `
-  @import url('https://fonts.googleapis.com/css2?family=Anton&display=swap');
-
   * {
     box-sizing: border-box;
   }
@@ -53,7 +51,8 @@ const styles = `
   .hub-title-shadow,
   .hub-title-base,
   .hub-title-outline {
-    font-family: 'Anton', Impact, 'Arial Black', sans-serif;
+    font-family: Impact, 'Arial Black', sans-serif;
+    letter-spacing: -0.5px;
     font-size: clamp(2.8rem, 6vw, 5.5rem);
     font-style: italic;
     letter-spacing: 0.04em;
