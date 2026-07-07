@@ -15,39 +15,261 @@
       justify-content: center;
       font-family: monospace;
       color: #f0eaff;
-      gap: 12px;
-      overflow-y: auto;
+      gap: 10px;
       padding: 12px;
     }
-    #scene-frame {
+
+    /* top nav bar */
+    #top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: min(780px, 100%);
+      gap: 12px;
+    }
+    #top-bar h1 {
+      font-size: clamp(14px, 3.5vw, 20px);
+      letter-spacing: 5px;
+      color: #e8d8ff;
+      text-shadow: 0 0 20px rgba(200,180,255,0.4);
+    }
+    #skip-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #c8b4f8;
+      letter-spacing: 1px;
+      cursor: pointer;
+      user-select: none;
+    }
+    #skip-toggle .toggle-track {
+      width: 30px; height: 16px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 999px;
       position: relative;
-      border: 18px solid #7a4a20;
+      transition: background 0.15s;
+    }
+    #skip-toggle .toggle-thumb {
+      position: absolute; left: 2px; top: 2px;
+      width: 10px; height: 10px;
+      background: #c8b4f8;
+      border-radius: 50%;
+      transition: left 0.15s, background 0.15s;
+    }
+    #skip-toggle.on .toggle-track  { background: rgba(255,255,255,0.3); }
+    #skip-toggle.on .toggle-thumb  { left: 16px; background: #fff; }
+    #skip-toggle.on                { color: #fff; }
+
+    /* main layout: scene + stats side by side */
+    #main-layout {
+      display: flex;
+      flex-direction: row;
+      gap: 14px;
+      align-items: flex-start;
+      width: min(780px, 100%);
+    }
+
+    /* left: canvas frame */
+    #scene-frame {
+      flex-shrink: 0;
+      border: 14px solid #7a4a20;
       box-shadow:
         inset  3px  3px 0 #b07840,
         inset -3px -3px 0 #3a1a06,
         0 8px 32px rgba(0,0,0,0.6);
       border-radius: 4px;
-      max-width: 100%;
     }
     #canvas {
       display: block;
-      width: min(540px, calc(100vw - 64px));
+      width: min(480px, calc(100vw - 200px));
       height: auto;
-      aspect-ratio: 540 / 400;
+      aspect-ratio: 480 / 400;
     }
-    #top-bar {
+
+    /* right: stats panel */
+    #stats-panel-wrap {
+      flex: 1;
+      min-width: 0;
+      background: rgba(0,0,0,0.25);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 10px;
+      max-height: 428px;
+      overflow-y: auto;
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      width: min(576px, 100%);
+      flex-direction: column;
       gap: 12px;
     }
-    #top-bar h1 {
-      font-size: clamp(14px, 4vw, 20px);
-      letter-spacing: 5px;
-      color: #e8d8ff;
-      text-shadow: 0 0 20px rgba(200,180,255,0.4);
+    #stats-panel-wrap::-webkit-scrollbar { width: 4px; }
+    #stats-panel-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+
+    #stats-panel { display: flex; flex-direction: column; gap: 12px; }
+
+    .stats-section {}
+    .stats-heading {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: #c8b4f8;
+      margin-bottom: 7px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
     }
+    .stats-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+    .stats-face {
+      width: 14px;
+      font-size: 11px;
+      color: #e8d8ff;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .stats-bar-track {
+      flex: 1;
+      height: 5px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 3px;
+      position: relative;
+      overflow: hidden;
+    }
+    .stats-bar-fill {
+      position: absolute; left: 0; top: 0; height: 100%;
+      background: linear-gradient(90deg, #a078d8, #c8b4f8);
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+    .stats-count {
+      width: 22px;
+      font-size: 10px;
+      color: #c8b4f8;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .stats-pct {
+      width: 30px;
+      font-size: 9px;
+      color: rgba(200,180,248,0.55);
+      text-align: right;
+      flex-shrink: 0;
+    }
+    #stats-empty {
+      font-size: 11px;
+      color: rgba(200,180,248,0.4);
+      letter-spacing: 1px;
+      text-align: center;
+      padding: 20px 0;
+    }
+    .stats-roll-label {
+      font-size: 10px;
+      letter-spacing: 3px;
+      color: #e8d8ff;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+    .stats-current {
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      margin-bottom: 8px;
+    }
+    .stats-history-label {
+      font-size: 9px;
+      letter-spacing: 2px;
+      color: rgba(200,180,248,0.45);
+      margin-bottom: 6px;
+    }
+    .stats-history { display: flex; flex-direction: column; gap: 4px; }
+    .stats-history-item {
+      display: flex;
+      gap: 8px;
+      font-size: 10px;
+      color: rgba(200,180,248,0.55);
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      letter-spacing: 0.5px;
+    }
+    .hist-n { flex-shrink: 0; color: rgba(200,180,248,0.35); width: 26px; }
+    .hist-vals { flex: 1; }
+
+    /* controls row */
+    #controls-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: min(780px, 100%);
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+
+    /* die selector */
+    #die-selector {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+    .die-btn-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+    }
+    .die-btn {
+      background: #fff;
+      border: 3px solid transparent;
+      border-radius: 12px;
+      width: 58px;
+      height: 58px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.1s;
+      position: relative;
+    }
+    .die-btn:hover { transform: scale(1.07); box-shadow: 0 0 0 3px rgba(200,180,232,0.6); }
+    .die-btn:active { transform: scale(0.97); }
+    .die-btn span {
+      font-family: monospace;
+      font-size: 10px;
+      font-weight: 700;
+      color: #3a1a5c;
+      letter-spacing: 1px;
+    }
+    /* count input under each die */
+    .die-count-input {
+      width: 58px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 6px;
+      color: #fff;
+      font-family: monospace;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 4px 6px;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.1s;
+    }
+    .die-count-input:focus { border-color: rgba(255,255,255,0.6); }
+    .die-count-input::-webkit-inner-spin-button,
+    .die-count-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+    /* queue display */
+    #queue-display {
+      font-size: 11px;
+      color: #c8b4f8;
+      letter-spacing: 2px;
+      min-height: 16px;
+      text-align: center;
+      flex: 1;
+    }
+
     /* buttons */
     .btn {
       background: #ffffff;
@@ -61,6 +283,7 @@
       cursor: pointer;
       letter-spacing: 0.5px;
       transition: background 0.1s, transform 0.08s;
+      white-space: nowrap;
     }
     .btn:hover  { background: #f0e8ff; }
     .btn:active { transform: scale(0.96); }
@@ -70,77 +293,16 @@
       color: #d8c8ff;
       font-family: monospace;
       font-size: 13px;
-      padding: 8px 20px;
+      padding: 8px 18px;
       border-radius: 999px;
       cursor: pointer;
       letter-spacing: 0.5px;
       transition: border-color 0.1s, color 0.1s;
+      white-space: nowrap;
     }
     .btn-ghost:hover { border-color: #fff; color: #fff; }
-    /* die selector */
-    #die-selector {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
-    .die-btn {
-      background: #fff;
-      border: 3px solid transparent;
-      border-radius: 14px;
-      width: 62px;
-      height: 62px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 3px;
-      cursor: pointer;
-      transition: transform 0.1s, box-shadow 0.1s;
-      position: relative;
-    }
-    .die-btn:hover { transform: scale(1.08); box-shadow: 0 0 0 3px rgba(200,180,232,0.6); }
-    .die-btn:active { transform: scale(0.97); }
-    .die-btn span {
-      font-family: monospace;
-      font-size: 10px;
-      font-weight: 700;
-      color: #3a1a5c;
-      letter-spacing: 1px;
-    }
-    .die-btn .badge {
-      position: absolute;
-      top: -6px; right: -6px;
-      background: #7c4daa;
-      color: #fff;
-      font-size: 10px;
-      font-weight: 700;
-      min-width: 18px;
-      height: 18px;
-      border-radius: 999px;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 0 4px;
-      border: 2px solid #fff;
-    }
-    .die-btn.has-count .badge { display: flex; }
-    /* queue display */
-    #queue-display {
-      font-size: 12px;
-      color: #c8b4f8;
-      letter-spacing: 2px;
-      min-height: 18px;
-      text-align: center;
-    }
-    /* controls row */
-    #controls {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      width: min(576px, 100%);
-      justify-content: space-between;
-    }
-    /* modifier input */
+
+    /* mod input */
     #mod-wrap {
       display: flex;
       align-items: center;
@@ -155,106 +317,114 @@
       border-radius: 999px;
       color: #fff;
       font-family: monospace;
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 700;
-      width: 58px;
-      padding: 5px 10px;
+      width: 54px;
+      padding: 5px 8px;
       text-align: center;
       outline: none;
-      transition: border-color 0.1s;
     }
     #mod-input:focus { border-color: #fff; }
     #mod-input::-webkit-inner-spin-button,
     #mod-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
     /* result */
     #result-display {
-      font-size: 14px;
+      font-size: 13px;
       letter-spacing: 2px;
       color: #e8d8ff;
       text-shadow: 0 0 16px rgba(200,180,255,0.4);
-      min-height: 28px;
+      min-height: 22px;
       text-align: center;
-      line-height: 1.8;
-      font-family: monospace;
+      width: min(780px, 100%);
     }
 
-    /* Mobile adjustments */
-    @media (max-width: 480px) {
-      body { gap: 8px; padding: 8px; }
-      #scene-frame { border-width: 10px; }
-      .die-btn { width: 52px; height: 52px; }
-      #controls { gap: 8px; }
-      .btn { padding: 8px 14px; font-size: 12px; }
-      .btn-ghost { padding: 7px 12px; font-size: 12px; }
-      #top-bar h1 { letter-spacing: 3px; }
+    /* mobile */
+    @media (max-width: 600px) {
+      #main-layout { flex-direction: column; }
+      #canvas { width: 100%; }
+      #stats-panel-wrap { max-height: 180px; }
+      #controls-row { gap: 8px; }
     }
   </style>
 </head>
 <body>
   <button class="btn-ghost" onclick="returnToHub()">&larr; Back To Hub</button>
+
   <div id="top-bar">
     <h1>DICE ROLLER</h1>
-    <div id="die-selector">
-      <button class="die-btn" data-die="d4" title="D4 -- click to add">
-        <svg width="30" height="30" viewBox="0 0 32 32">
-          <polygon points="16,3 30,29 2,29" fill="#00c8d4" stroke="#007a82" stroke-width="1.5" stroke-linejoin="round"/>
-          <text x="16" y="24" text-anchor="middle" font-family="monospace" font-size="9" font-weight="bold" fill="#003a3e">4</text>
-        </svg>
-        <span>D4</span>
-        <div class="badge" id="badge-d4">0</div>
-      </button>
-      <button class="die-btn" data-die="d6" title="D6 -- click to add">
-        <svg width="28" height="28" viewBox="0 0 30 30">
-          <rect x="2" y="2" width="26" height="26" rx="5" fill="#d42040" stroke="#8a0820" stroke-width="1.5"/>
-          <text x="15" y="21" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold" fill="#fff0f2">6</text>
-        </svg>
-        <span>D6</span>
-        <div class="badge" id="badge-d6">0</div>
-      </button>
+    <div id="skip-toggle">
+      SKIP ANIM
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
     </div>
   </div>
-  <div id="scene-frame">
-    <canvas id="canvas"></canvas>
+
+  <div id="main-layout">
+    <!-- canvas -->
+    <div id="scene-frame">
+      <canvas id="canvas"></canvas>
+    </div>
+    <!-- stats panel -->
+    <div id="stats-panel-wrap">
+      <div id="stats-panel">
+        <div id="stats-empty">Roll to see stats</div>
+      </div>
+    </div>
   </div>
-  <div id="queue-display"></div>
-  <div id="result-display"></div>
-  <div id="controls">
-    <button class="btn-ghost" id="clear-btn">CLEAR</button>
+
+  <div id="controls-row">
+    <div id="die-selector">
+      <div class="die-btn-wrap">
+        <button class="die-btn" data-die="d4" title="D4">
+          <svg width="28" height="28" viewBox="0 0 32 32">
+            <polygon points="16,3 30,29 2,29" fill="#00c8d4" stroke="#007a82" stroke-width="1.5" stroke-linejoin="round"/>
+            <text x="16" y="24" text-anchor="middle" font-family="monospace" font-size="9" font-weight="bold" fill="#003a3e">4</text>
+          </svg>
+          <span>D4</span>
+        </button>
+        <input class="die-count-input" id="count-d4" type="number" min="0" max="999" value="0" placeholder="0"/>
+      </div>
+      <div class="die-btn-wrap">
+        <button class="die-btn" data-die="d6" title="D6">
+          <svg width="26" height="26" viewBox="0 0 30 30">
+            <rect x="2" y="2" width="26" height="26" rx="5" fill="#d42040" stroke="#8a0820" stroke-width="1.5"/>
+            <text x="15" y="21" text-anchor="middle" font-family="monospace" font-size="12" font-weight="bold" fill="#fff0f2">6</text>
+          </svg>
+          <span>D6</span>
+        </button>
+        <input class="die-count-input" id="count-d6" type="number" min="0" max="999" value="0" placeholder="0"/>
+      </div>
+    </div>
+
+    <div id="queue-display"></div>
+
     <div id="mod-wrap">
       MOD
       <input id="mod-input" type="number" value="0" step="1" placeholder="0"/>
     </div>
+    <button class="btn-ghost" id="clear-btn">CLEAR</button>
     <button class="btn" id="roll-btn">ROLL</button>
   </div>
+
+  <div id="result-display"></div>
+
   <script>
     function returnToHub() {
       if (window.parent !== window) window.parent.postMessage('returnToHub', '*');
       else alert("Running standalone -- visit the hub to navigate.");
     }
-    // Badge / queue management (mirrors game.js diceQueue)
-    const _counts = { d4: 0, d6: 0 };
+    // Clicking the die icon bumps the count input by 1
     document.querySelectorAll('.die-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const t = btn.dataset.die;
-        _counts[t]++;
-        refreshBadges();
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        const type  = btn.dataset.die;
+        const input = document.getElementById(`count-${type}`);
+        if (input) {
+          input.value = Math.min(999, (parseInt(input.value)||0) + 1);
+          input.dispatchEvent(new Event('input'));
+        }
       });
     });
-    document.getElementById('roll-btn').addEventListener('click', resetBadges);
-    document.getElementById('clear-btn').addEventListener('click', resetBadges);
-    function refreshBadges() {
-      for (const [t, n] of Object.entries(_counts)) {
-        const badge = document.getElementById(`badge-${t}`);
-        const btn   = document.querySelector(`.die-btn[data-die="${t}"]`);
-        if (!badge || !btn) continue;
-        badge.textContent = n;
-        btn.classList.toggle('has-count', n > 0);
-      }
-    }
-    function resetBadges() {
-      for (const t of Object.keys(_counts)) _counts[t] = 0;
-      refreshBadges();
-    }
   </script>
   <script src="./game.js"></script>
 </body>
