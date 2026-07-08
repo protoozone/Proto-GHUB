@@ -266,7 +266,7 @@ export default function Home() {
             <div className="column"><GameCard to="/games/Rolling_Dice" name="Roll Dice" artSrc="/assets/rolling_dice.png" /></div>
           </div>
           <div className="row">
-            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
+            <div className="column"><GameCard to="/games/Demolition" name="Demolition" artSrc="/assets/demolition.png" /></div>
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
