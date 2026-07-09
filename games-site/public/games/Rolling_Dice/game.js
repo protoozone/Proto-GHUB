@@ -138,8 +138,66 @@ const D4_CORNER_VALS = D4_FACES.map(face =>
   face.verts.map(vi => D4_FACES.find(f => !f.verts.includes(vi)).val)
 );
 
+// D8 geometry - regular octahedron, scaled to r=0.7
+const _r8 = 0.7;
+const D8V = [[_r8,0,0],[-_r8,0,0],[0,_r8,0],[0,-_r8,0],[0,0,_r8],[0,0,-_r8]];
+const D8_FACES = [
+  {verts:[0,2,4],val:1},{verts:[2,1,4],val:2},{verts:[1,3,4],val:3},{verts:[3,0,4],val:4},
+  {verts:[2,0,5],val:5},{verts:[1,2,5],val:6},{verts:[3,1,5],val:7},{verts:[0,3,5],val:8},
+];
+
+// D10 geometry - pentagonal trapezohedron
+const D10V = [];
+for(let i=0;i<5;i++){const a=(i/5)*2*Math.PI; D10V.push([Math.cos(a),0.4,Math.sin(a)]);}
+for(let i=0;i<5;i++){const a=(i/5)*2*Math.PI+Math.PI/5; D10V.push([Math.cos(a),-0.4,Math.sin(a)]);}
+D10V.push([0,1.2,0]);  // 10 = top pole
+D10V.push([0,-1.2,0]); // 11 = bottom pole
+// Scale to unit sphere approx
+const _d10scale = 0.6/Math.sqrt(1+0.16);
+D10V.forEach((v,i)=>{ D10V[i]=[v[0]*_d10scale,v[1]*_d10scale,v[2]*_d10scale]; });
+D10V[10]=[0, 1.2*_d10scale, 0]; D10V[11]=[0,-1.2*_d10scale,0];
+const D10_FACES = [
+  {verts:[10,1,5,0],val:1},{verts:[11,5,1,6],val:2},
+  {verts:[10,2,6,1],val:3},{verts:[11,6,2,7],val:4},
+  {verts:[10,3,7,2],val:5},{verts:[11,7,3,8],val:6},
+  {verts:[10,4,8,3],val:7},{verts:[11,8,4,9],val:8},
+  {verts:[10,0,9,4],val:9},{verts:[11,9,0,5],val:10},
+];
+
+// D12 geometry - regular dodecahedron
+const _phi = (1+Math.sqrt(5))/2;
+const _D12raw = [
+  [1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1],
+  [-1,1,1],[-1,1,-1],[-1,-1,1],[-1,-1,-1],
+  [0,1/_phi,_phi],[0,-1/_phi,_phi],[0,1/_phi,-_phi],[0,-1/_phi,-_phi],
+  [1/_phi,_phi,0],[-1/_phi,_phi,0],[1/_phi,-_phi,0],[-1/_phi,-_phi,0],
+  [_phi,0,1/_phi],[_phi,0,-1/_phi],[-_phi,0,1/_phi],[-_phi,0,-1/_phi],
+];
+const D12V = _D12raw.map(v=>{const l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);return[v[0]/l*0.65,v[1]/l*0.65,v[2]/l*0.65];});
+const D12_FACES = [
+  {verts:[0,12,13,4,8],val:1},{verts:[0,8,9,2,16],val:2},{verts:[0,16,17,1,12],val:3},
+  {verts:[1,10,5,13,12],val:4},{verts:[1,17,3,11,10],val:5},{verts:[2,9,6,15,14],val:6},
+  {verts:[2,14,3,17,16],val:7},{verts:[3,14,15,7,11],val:8},{verts:[4,18,6,9,8],val:9},
+  {verts:[4,13,5,19,18],val:10},{verts:[5,10,11,7,19],val:11},{verts:[6,18,19,7,15],val:12},
+];
+
+// D20 geometry - regular icosahedron
+const _D20raw = [
+  [0,1,_phi],[0,-1,_phi],[0,1,-_phi],[0,-1,-_phi],
+  [1,_phi,0],[-1,_phi,0],[1,-_phi,0],[-1,-_phi,0],
+  [_phi,0,1],[_phi,0,-1],[-_phi,0,1],[-_phi,0,-1],
+];
+const D20V = _D20raw.map(v=>{const l=Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);return[v[0]/l*0.65,v[1]/l*0.65,v[2]/l*0.65];});
+const D20_FACES = [
+  {verts:[0,1,8]},{verts:[0,10,1]},{verts:[0,4,5]},{verts:[0,8,4]},{verts:[0,5,10]},
+  {verts:[1,7,6]},{verts:[1,6,8]},{verts:[1,10,7]},{verts:[2,9,3]},{verts:[2,3,11]},
+  {verts:[2,5,4]},{verts:[2,4,9]},{verts:[2,11,5]},{verts:[3,6,7]},{verts:[3,9,6]},
+  {verts:[3,7,11]},{verts:[4,8,9]},{verts:[5,11,10]},{verts:[6,9,8]},{verts:[7,10,11]},
+].map((f,i)=>({...f, val:i+1}));
+
 // Face canvas pre-rendering
 const FS = 128;
+
 function makeD6Canvas(val) {
   const fc=document.createElement('canvas'); fc.width=fc.height=FS;
   const c=fc.getContext('2d');
@@ -168,9 +226,59 @@ function makeD4Canvas(cornerVals) {
   pos.forEach(({x,y,rot},i)=>{ c.save(); c.translate(x,y); c.rotate(rot); c.fillText(String(cornerVals[i]),0,0); c.restore(); });
   return fc;
 }
+// Generic triangle face canvas (D8, D20)
+function makeTriCanvas(val, color) {
+  const fc=document.createElement('canvas'); fc.width=fc.height=FS;
+  const c=fc.getContext('2d');
+  c.fillStyle=color;
+  c.beginPath(); c.moveTo(FS/2,6); c.lineTo(FS-6,FS-6); c.lineTo(6,FS-6); c.closePath(); c.fill();
+  c.strokeStyle='rgba(0,0,0,0.3)'; c.lineWidth=2; c.stroke();
+  c.fillStyle='#ffffff';
+  c.font=`bold ${FS*0.38}px monospace`;
+  c.textAlign='center'; c.textBaseline='middle';
+  c.fillText(String(val), FS/2, FS*0.62);
+  return fc;
+}
+// Generic quad face canvas (D10 kite faces)
+function makeQuadCanvas(val, color) {
+  const fc=document.createElement('canvas'); fc.width=fc.height=FS;
+  const c=fc.getContext('2d');
+  c.fillStyle=color;
+  c.beginPath(); c.moveTo(FS/2,6); c.lineTo(FS-6,FS/2); c.lineTo(FS/2,FS-6); c.lineTo(6,FS/2); c.closePath(); c.fill();
+  c.strokeStyle='rgba(0,0,0,0.3)'; c.lineWidth=2; c.stroke();
+  c.fillStyle='#ffffff';
+  c.font=`bold ${FS*0.38}px monospace`;
+  c.textAlign='center'; c.textBaseline='middle';
+  c.fillText(String(val), FS/2, FS/2);
+  return fc;
+}
+// Generic pentagon face canvas (D12)
+function makePentCanvas(val, color) {
+  const fc=document.createElement('canvas'); fc.width=fc.height=FS;
+  const c=fc.getContext('2d');
+  c.fillStyle=color;
+  c.beginPath();
+  for(let i=0;i<5;i++){
+    const a=(i/5)*Math.PI*2 - Math.PI/2;
+    const x=FS/2+Math.cos(a)*(FS/2-8), y=FS/2+Math.sin(a)*(FS/2-8);
+    i===0?c.moveTo(x,y):c.lineTo(x,y);
+  }
+  c.closePath(); c.fill();
+  c.strokeStyle='rgba(0,0,0,0.3)'; c.lineWidth=2; c.stroke();
+  c.fillStyle='#ffffff';
+  c.font=`bold ${FS*0.36}px monospace`;
+  c.textAlign='center'; c.textBaseline='middle';
+  c.fillText(String(val), FS/2, FS/2+4);
+  return fc;
+}
+
 const D6C = {};
 for (const f of CUBE_FACES) D6C[f.val] = makeD6Canvas(f.val);
 const D4C = D4_FACES.map((f,i) => makeD4Canvas(D4_CORNER_VALS[i]));
+const D8C  = {}; for(const f of D8_FACES)  D8C[f.val]  = makeTriCanvas(f.val,  '#2a7a3a');
+const D10C = {}; for(const f of D10_FACES) D10C[f.val] = makeQuadCanvas(f.val, '#7a7a8a');
+const D12C = {}; for(const f of D12_FACES) D12C[f.val] = makePentCanvas(f.val, '#6a2a9a');
+const D20C = {}; for(const f of D20_FACES) D20C[f.val] = makeTriCanvas(f.val,  '#b89000');
 
 // Affine pattern mapping
 function setPatTrans(pat, p0, p1, p3) {
@@ -189,7 +297,93 @@ function drawQuad(fc, pts, sc, cx, cy) {
   ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.lineWidth=1; ctx.stroke();
 }
 
-// Settle poses
+// Generic settle pose: rotate the face normal to face the camera (+Z)
+// Works for any convex die where faces have clear outward normals.
+function settlePoseGeneric(faceNormal, symmetry) {
+  const Rbase = rotateFromTo(faceNormal, [0,0,1]);
+  const k     = Math.floor(Math.random()*symmetry);
+  return mulMM(Rz(k * Math.PI*2/symmetry), Rbase);
+}
+// Compute outward face normal from vertex indices + vertex array
+function faceNormal(verts, vArr) {
+  const [a,b,c] = verts.slice(0,3).map(i=>vArr[i]);
+  const ax=b[0]-a[0],ay=b[1]-a[1],az=b[2]-a[2];
+  const bx=c[0]-a[0],by=c[1]-a[1],bz=c[2]-a[2];
+  return normV([ay*bz-az*by, az*bx-ax*bz, ax*by-ay*bx]);
+}
+
+// Generic triangle face draw (D8, D20)
+function drawTriFaces(die, vArr, faces, faceCanvases) {
+  const m  = die.curM;
+  const tv = vArr.map(v => mulMV(m,v));
+  const sc = die.scale, cx=die.x, cy=die.y2d;
+  const pv = tv.map(v => [v[0]*sc+cx, -v[1]*sc+cy]);
+  faces.map((f,fi) => {
+    const [i0,i1,i2] = f.verts;
+    const avgZ = (tv[i0][2]+tv[i1][2]+tv[i2][2])/3;
+    const ax=pv[i1][0]-pv[i0][0], ay=pv[i1][1]-pv[i0][1];
+    const bx=pv[i2][0]-pv[i0][0], by=pv[i2][1]-pv[i0][1];
+    return {f, fi, avgZ, visible: ax*by-ay*bx > 0};
+  }).sort((a,b)=>a.avgZ-b.avgZ).forEach(({f,fi,visible})=>{
+    if (!visible) return;
+    const [i0,i1,i2]=f.verts, [p0,p1,p2]=[pv[i0],pv[i1],pv[i2]];
+    const fc = faceCanvases[f.val];
+    if (fc) {
+      const pat=ctx.createPattern(fc,'no-repeat');
+      setPatTrans(pat,p0,p1,p2);
+      ctx.fillStyle=pat;
+    } else {
+      ctx.fillStyle='#888';
+    }
+    ctx.beginPath(); ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.closePath(); ctx.fill();
+    const shade=Math.max(0,Math.min(0.3,0.3-tv[i0][2]*0.25));
+    ctx.fillStyle=`rgba(0,0,0,${shade})`;
+    ctx.beginPath(); ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(p0[0],p0[1]); ctx.lineTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]); ctx.closePath(); ctx.stroke();
+  });
+}
+
+// Generic polygon face draw (D10 quads, D12 pentagons)
+function drawPolyFaces(die, vArr, faces, faceCanvases) {
+  const m  = die.curM;
+  const tv = vArr.map(v => mulMV(m,v));
+  const sc = die.scale, cx=die.x, cy=die.y2d;
+  const pv = tv.map(v => [v[0]*sc+cx, -v[1]*sc+cy]);
+  faces.map(f => {
+    const avgZ = f.verts.reduce((s,i)=>s+tv[i][2],0)/f.verts.length;
+    const n    = faceNormal(f.verts, tv);
+    // visibility: face normal z > 0 means facing camera
+    // recompute normal in screen projected space via cross product of first 3 pts
+    const [i0,i1,i2]=f.verts;
+    const ax=pv[i1][0]-pv[i0][0], ay=pv[i1][1]-pv[i0][1];
+    const bx=pv[i2][0]-pv[i0][0], by=pv[i2][1]-pv[i0][1];
+    return {f, avgZ, visible: ax*by-ay*bx > 0};
+  }).sort((a,b)=>a.avgZ-b.avgZ).forEach(({f,visible})=>{
+    if (!visible) return;
+    const pts = f.verts.map(i=>pv[i]);
+    const fc = faceCanvases[f.val];
+    if (fc) {
+      const pat=ctx.createPattern(fc,'no-repeat');
+      setPatTrans(pat,pts[0],pts[1],pts[pts.length-1]);
+      ctx.fillStyle=pat;
+    } else {
+      ctx.fillStyle='#888';
+    }
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+    for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+    ctx.closePath(); ctx.fill();
+    const shade=Math.max(0,Math.min(0.3,0.3-tv[f.verts[0]][2]*0.25));
+    ctx.fillStyle=`rgba(0,0,0,${shade})`;
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+    for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+    for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+    ctx.closePath(); ctx.stroke();
+  });
+}
 function settlePoseD6(outcome) {
   const face  = CUBE_FACES.find(f => f.val === outcome);
   const Rbase = rotateFromTo(face.normal, [0,0,1]);
@@ -211,6 +405,10 @@ function settlePoseD4(outcome) {
   const k     = Math.floor(Math.random()*3);
   return mulMM(Rz(k * Math.PI * 2/3), Rbase);
 }
+function settlePoseD8(outcome)  { return settlePoseGeneric(faceNormal(D8_FACES.find(f=>f.val===outcome).verts, D8V),  3); }
+function settlePoseD10(outcome) { return settlePoseGeneric(faceNormal(D10_FACES.find(f=>f.val===outcome).verts, D10V), 2); }
+function settlePoseD12(outcome) { return settlePoseGeneric(faceNormal(D12_FACES.find(f=>f.val===outcome).verts, D12V), 5); }
+function settlePoseD20(outcome) { return settlePoseGeneric(faceNormal(D20_FACES.find(f=>f.val===outcome).verts, D20V), 3); }
 
 // Build anim path driven by the same initVz as physics, so arc frame counts
 // match the physics bounce durations exactly -- no gate freeze.
@@ -268,12 +466,22 @@ function buildAnimPath(snapM, initVz) {
 }
 
 // Die creation
+const DIE_SIDES = {d4:4, d6:6, d8:8, d10:10, d12:12, d20:20};
+function getSnapM(type, outcome) {
+  switch(type) {
+    case 'd4':  return settlePoseD4(outcome);
+    case 'd6':  return settlePoseD6(outcome);
+    case 'd8':  return settlePoseD8(outcome);
+    case 'd10': return settlePoseD10(outcome);
+    case 'd12': return settlePoseD12(outcome);
+    case 'd20': return settlePoseD20(outcome);
+  }
+}
 function createDie(type, outcome, skipAnim) {
   const dir    = Math.random()*Math.PI*2;
-  const snapM  = type==='d6' ? settlePoseD6(outcome) : settlePoseD4(outcome);
+  const snapM  = getSnapM(type, outcome);
   const initVz = 1.6 + Math.random()*0.7;
   const { path: animPath, segments } = buildAnimPath(snapM, initVz);
-
   return {
     type, outcome,
     x:    W/2 + (Math.random()-0.5)*100,
@@ -286,16 +494,16 @@ function createDie(type, outcome, skipAnim) {
     snapM,
     animPath,
     segments,
-    segIdx:     0,                     // which segment we're currently in
-    arcVzStart: initVz,                // vz at the start of the current arc
+    segIdx:     0,
+    arcVzStart: initVz,
     animFrame:  0,
     curM:       animPath[0],
     settling:   false,
     settleT:    0,
     settleFrom: null,
     phase: skipAnim ? 'done' : 'roll',
-    radius: type==='d6' ? 28 : 26,
-    scale:  type==='d6' ? 52 : 50,
+    radius: 28,
+    scale:  52,
   };
 }
 
@@ -479,7 +687,16 @@ function drawD4(die) {
 function render() {
   ctx.clearRect(0,0,W,H);
   drawTray();
-  dice.forEach(d => d.type==='d6' ? drawD6(d) : drawD4(d));
+  dice.forEach(d => {
+    switch(d.type) {
+      case 'd6':  drawD6(d); break;
+      case 'd4':  drawD4(d); break;
+      case 'd8':  drawTriFaces(d, D8V,  D8_FACES,  D8C);  break;
+      case 'd10': drawPolyFaces(d, D10V, D10_FACES, D10C); break;
+      case 'd12': drawPolyFaces(d, D12V, D12_FACES, D12C); break;
+      case 'd20': drawTriFaces(d, D20V, D20_FACES, D20C); break;
+    }
+  });
 }
 
 // Stats table — per-roll, not cumulative. History list below.
@@ -496,7 +713,8 @@ function buildRollGroups(rolledDice) {
 }
 
 function renderStatsSection(type, faceCounts) {
-  const faces    = type === 'd6' ? [6,5,4,3,2,1] : [4,3,2,1];
+  const sides = DIE_SIDES[type] || 6;
+  const faces = Array.from({length:sides},(_,i)=>sides-i);
   const total    = faces.reduce((s,f) => s + (faceCounts[f]||0), 0);
   const maxCount = Math.max(...faces.map(f => faceCounts[f]||0), 1);
 
@@ -642,7 +860,7 @@ function roll() {
   const n = queue.length;
   dice = queue.map((type,i) => {
     const angle = (i/n)*Math.PI*2, off = n>1 ? Math.min(60, 20+n*3) : 0;
-    const sides = type==='d6' ? 6 : 4;
+    const sides = DIE_SIDES[type] || 6;
     const d = createDie(type, 1+Math.floor(Math.random()*sides), doSkip);
     d.x   = W/2 + Math.cos(angle)*off + (Math.random()-0.5)*30;
     d.y2d = H/2 + Math.sin(angle)*off + (Math.random()-0.5)*30;
