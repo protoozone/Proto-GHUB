@@ -5,14 +5,14 @@ const W = canvas.width  = 480;
 const H = canvas.height = 400;
 
 // Constants
-const RESTITUTION      = 0.46;
-const BASE_FRICTION    = 0.989;
-const WALL_FRICTION    = 0.80;
+const RESTITUTION      = 0.38;  // more speed lost on wall bounce
+const BASE_FRICTION    = 0.994; // less general drag between bounces
+const WALL_FRICTION    = 0.70;  // more speed lost on wall contact
 const SETTLE_SPEED     = 0.5;
 const TRAY_PAD         = 14;
 const GRAVITY          = 0.045;
 const V_RESTITUT       = 0.50;
-const FLOOR_FRIC       = 0.84;
+const FLOOR_FRIC       = 0.74;  // more speed lost on floor bounce
 const DRAG_THRESH      = 0.12;
 const DRAG_MAX         = 0.72;
 const SLERP_FRAMES     = 28;
@@ -212,143 +212,146 @@ function settlePoseD4(outcome) {
   return mulMM(Rz(k * Math.PI * 2/3), Rbase);
 }
 
-// Build anim path as array of 3x3 matrices.
-// path[0] = snapM. Reversed so playback goes tumble -> settle.
-function buildAnimPath(snapM) {
+// Build anim path driven by the same initVz as physics, so arc frame counts
+// match the physics bounce durations exactly -- no gate freeze.
+// Forward: index 0 = snapM, index last = chaotic peak.
+// Reversed for playback: animFrame 0 = chaotic, animFrame last = snapM.
+function buildAnimPath(snapM, initVz) {
   const RDECAY = 0.78;
-  const path   = [snapM];
-  let axis  = normV([(Math.random()-0.5), (Math.random()-0.5), (Math.random()-0.5)]);
-  let omega = 0.012 + Math.random()*0.018;
-  const bounces = [];
-  let vUp = 0.06 + Math.random()*0.10;
-  while (vUp < 1.6 + Math.random()*0.5) { bounces.push(vUp); vUp /= V_RESTITUT; }
+
+  // Bounce sequence: smallest bounce first (forward), largest last
+  const bounceVels = [];
+  let vUp = initVz;
+  while (vUp > 0.06) { bounceVels.push(vUp); vUp *= V_RESTITUT; }
+  bounceVels.reverse(); // smallest first
+
+  const nBounces = bounceVels.length;
+  // omega at smallest bounce (forward start, playback end = last settle wobble)
+  // Must be visibly non-zero so the wobble is perceptible
+  const omegaSettle = 0.025 + Math.random()*0.015;
+  // omega at largest bounce = omegaSettle / RDECAY^n (grows each step)
+  // This means in playback: large omega first, decays by RDECAY each bounce
+  const omegaStart = omegaSettle * Math.pow(1/RDECAY, nBounces - 1);
+
+  let omega = omegaStart / Math.pow(1/RDECAY, nBounces - 1); // = omegaSettle
+  let axis  = normV([(Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)]);
+
+  const fwdPath     = [snapM];
+  const fwdSegments = [];
   let M = snapM;
-  for (const v of bounces) {
-    const airFrames = Math.ceil(2*v/GRAVITY);
+
+  for (let bi = 0; bi < bounceVels.length; bi++) {
+    const v         = bounceVels[bi];
+    const segStart  = fwdPath.length;
+    const airFrames = Math.ceil(2 * v / GRAVITY);
     for (let f = 0; f < airFrames; f++) {
       M = mulMM(rotAxis(axis[0], axis[1], axis[2], omega), M);
-      path.push(M);
+      fwdPath.push(M);
     }
-    omega /= RDECAY;
-    axis = normV([axis[0]+(Math.random()-0.5)*0.4, axis[1]+(Math.random()-0.5)*0.4, axis[2]+(Math.random()-0.5)*0.4]);
+    fwdSegments.push({ start: segStart, end: fwdPath.length - 1 });
+    omega /= RDECAY; // grows toward chaotic end (decays in playback on each bounce)
+    // Fresh random axis at each bounce -- sharp direction change on impact
+    axis = normV([(Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)]);
   }
-  path.push(M);
-  path.reverse();
-  return path;
+
+  const totalLen = fwdPath.length - 1;
+  fwdPath.reverse(); // now index 0 = chaotic, index last = snapM
+
+  // Remap segment indices into reversed array and reverse their order
+  // so segments[0] = first playback arc (largest bounce)
+  const segments = [...fwdSegments].reverse().map(({start, end}) => ({
+    start: totalLen - end,
+    end:   totalLen - start,
+  }));
+
+  return { path: fwdPath, segments };
 }
 
 // Die creation
 function createDie(type, outcome, skipAnim) {
   const dir    = Math.random()*Math.PI*2;
-  const hspeed = 9 + Math.random()*9;
   const snapM  = type==='d6' ? settlePoseD6(outcome) : settlePoseD4(outcome);
-  const animPath = buildAnimPath(snapM);
+  const initVz = 1.6 + Math.random()*0.7;
+  const { path: animPath, segments } = buildAnimPath(snapM, initVz);
+
   return {
     type, outcome,
     x:    W/2 + (Math.random()-0.5)*100,
     y2d:  H/2 + (Math.random()-0.5)*80,
-    vx:   Math.cos(dir)*hspeed,
-    vy2d: Math.sin(dir)*hspeed,
+    vx:   Math.cos(dir)*(13.5+Math.random()*13.5),
+    vy2d: Math.sin(dir)*(13.5+Math.random()*13.5),
     h:    1.2 + Math.random()*0.8,
-    vz:   1.6 + Math.random()*0.7,
+    vz:   initVz,
     apex: 0,
     snapM,
     animPath,
-    animFrame: 0,
-    curM: animPath[0],
-    // live omega for bounce-recoil system
-    omega: 0.012 + Math.random()*0.018,
-    axis:  normV([(Math.random()-0.5),(Math.random()-0.5),(Math.random()-0.5)]),
-    settling:    false,
-    settleT:     0,
-    settleFrom:  null,
+    segments,
+    segIdx:     0,                     // which segment we're currently in
+    arcVzStart: initVz,                // vz at the start of the current arc
+    animFrame:  0,
+    curM:       animPath[0],
+    settling:   false,
+    settleT:    0,
+    settleFrom: null,
     phase: skipAnim ? 'done' : 'roll',
-    radius: type==='d6' ? 30 : 26,
-    scale:  type==='d6' ? 58 : 50,
+    radius: type==='d6' ? 28 : 26,
+    scale:  type==='d6' ? 52 : 50,
   };
 }
 
 // Physics
-function stepPhysics(skipAnim) {
+function stepPhysics() {
   const walls = {left:TRAY_PAD, right:W-TRAY_PAD, top:TRAY_PAD, bottom:H-TRAY_PAD};
   dice.forEach(die => {
     if (die.phase === 'done') return;
 
     const prevH = die.h;
-
-    // Vertical
     die.vz -= GRAVITY;
     die.h  += die.vz;
 
-    const justLanded = prevH > 0 && die.h <= 0;
+    const justLanded = prevH > 0.001 && die.h <= 0;
 
     if (die.h <= 0) {
-      die.h = 0;
-      const impactVz = Math.abs(die.vz);
-      die.vz   = impactVz * V_RESTITUT;
+      die.h  = 0;
+      die.vz = Math.abs(die.vz) * V_RESTITUT;
       die.apex = (die.vz*die.vz) / (2*GRAVITY);
       die.vx   *= FLOOR_FRIC;
       die.vy2d *= FLOOR_FRIC;
 
-      // Bounce-recoil: when nearly stopped and still bouncing, add rotational kick
-      if (justLanded && die.h < RECOIL_H_THRESH && die.omega < 0.04) {
-        // How far from settle pose (0=settled, 1=max away)
-        const dist = Math.min(rotDist(die.curM, die.snapM), 0.95);
-        // Coefficient: higher when further from settle (encourages tumbling toward settle)
-        const coeff = ROT_COEFF * (dist / 0.95);
-        const kick  = impactVz * coeff;
-        die.omega   = Math.min(die.omega + kick, 0.06);
-
-        // Perturb axis slightly toward settle direction on each kick
-        die.axis = normV([
-          die.axis[0] + (Math.random()-0.5)*0.5,
-          die.axis[1] + (Math.random()-0.5)*0.5,
-          die.axis[2] + (Math.random()-0.5)*0.5,
-        ]);
-
-        // Deflect horizontal velocity by up to 30 degrees
+      if (justLanded) {
+        // Advance to next anim segment on every real floor contact
+        const nextSeg = die.segIdx + 1;
+        if (nextSeg < die.segments.length) {
+          die.segIdx     = nextSeg;
+          die.arcVzStart = die.vz;
+        }
+        // Reset apex when bounce is negligible so settle condition can trigger
+        if (die.vz < 0.08) die.apex = 0;
+        // Small directional deflection
         const spd = Math.sqrt(die.vx*die.vx + die.vy2d*die.vy2d);
-        if (spd > 0.1) {
-          const curAngle = Math.atan2(die.vy2d, die.vx);
-          const deflect  = (Math.random()-0.5) * (Math.PI/3); // +/-30 deg
-          const newAngle = curAngle + deflect;
-          die.vx   = Math.cos(newAngle) * spd;
-          die.vy2d = Math.sin(newAngle) * spd;
+        if (spd > 0.5) {
+          const a = Math.atan2(die.vy2d, die.vx) + (Math.random()-0.5)*(Math.PI/3);
+          die.vx   = Math.cos(a)*spd;
+          die.vy2d = Math.sin(a)*spd;
         }
       }
     }
 
     if (die.vz > 0) die.apex = die.h + (die.vz*die.vz)/(2*GRAVITY);
 
-    // Drag ramp
     const t = Math.max(0, 1 - die.apex/DRAG_THRESH);
-    const friction = BASE_FRICTION - t*(BASE_FRICTION-DRAG_MAX);
-    die.vx   *= friction;
-    die.vy2d *= friction;
+    const fr = BASE_FRICTION - t*(BASE_FRICTION-DRAG_MAX);
+    die.vx   *= fr;
+    die.vy2d *= fr;
 
     die.x   += die.vx;
     die.y2d += die.vy2d;
 
-    const r = die.radius;
-    const wallDecay = 0.70 + Math.random()*0.10;
-    if (die.x-r < walls.left) {
-      die.x    = walls.left+r;
-      die.vx   = Math.abs(die.vx)*RESTITUTION*wallDecay;
-      die.vy2d *= WALL_FRICTION;
-    } else if (die.x+r > walls.right) {
-      die.x    = walls.right-r;
-      die.vx   = -Math.abs(die.vx)*RESTITUTION*wallDecay;
-      die.vy2d *= WALL_FRICTION;
-    }
-    if (die.y2d-r < walls.top) {
-      die.y2d  = walls.top+r;
-      die.vy2d = Math.abs(die.vy2d)*RESTITUTION*wallDecay;
-      die.vx  *= WALL_FRICTION;
-    } else if (die.y2d+r > walls.bottom) {
-      die.y2d  = walls.bottom-r;
-      die.vy2d = -Math.abs(die.vy2d)*RESTITUTION*wallDecay;
-      die.vx  *= WALL_FRICTION;
-    }
+    const r = die.radius, wd = 0.70+Math.random()*0.10;
+    if (die.x-r < walls.left)          { die.x=walls.left+r;    die.vx= Math.abs(die.vx)*RESTITUTION*wd; die.vy2d*=WALL_FRICTION; }
+    else if (die.x+r > walls.right)    { die.x=walls.right-r;   die.vx=-Math.abs(die.vx)*RESTITUTION*wd; die.vy2d*=WALL_FRICTION; }
+    if (die.y2d-r < walls.top)         { die.y2d=walls.top+r;   die.vy2d= Math.abs(die.vy2d)*RESTITUTION*wd; die.vx*=WALL_FRICTION; }
+    else if (die.y2d+r > walls.bottom) { die.y2d=walls.bottom-r; die.vy2d=-Math.abs(die.vy2d)*RESTITUTION*wd; die.vx*=WALL_FRICTION; }
   });
 
   // Dice-to-dice collisions
@@ -365,24 +368,25 @@ function stepPhysics(skipAnim) {
       const relV=(b.vx-a.vx)*nx+(b.vy2d-a.vy2d)*ny;
       if (relV < 0) {
         const imp=-(1+RESTITUTION)*relV/2;
-        const ix=imp*nx, iy=imp*ny;
-        if (a.phase==='roll'){a.vx-=ix; a.vy2d-=iy;}
-        if (b.phase==='roll'){b.vx+=ix; b.vy2d+=iy;}
+        if (a.phase==='roll'){a.vx-=imp*nx; a.vy2d-=imp*ny;}
+        if (b.phase==='roll'){b.vx+=imp*nx; b.vy2d+=imp*ny;}
       }
     }
   }
 }
 
-// Animation: matrix-path playback coupled to physics speed
+// Animation: play path at 1 frame per game frame, gated at segment boundaries.
+// The path was built with one matrix per physics frame per arc, so this is
+// a 1:1 replay. Segment gates hold animFrame at each boundary until physics
+// fires the corresponding floor contact, then open the next arc.
+// Result: rotation speed matches the bounce sequence exactly in reverse --
+// slow wobble at start (last tiny bounces), building to fast tumble, then settle.
 function stepAnimations() {
   dice.forEach(die => {
     if (die.phase === 'done') return;
 
     const spd = Math.sqrt(die.vx*die.vx + die.vy2d*die.vy2d);
-    const onFloor    = die.h < 0.01;
-    const sliding    = onFloor && spd > 0.05;
-    const airborne   = !onFloor || die.vz > 0.05;
-    const physicsActive = spd > 0.05 || die.h > 0.05 || Math.abs(die.vz) > 0.05;
+    const physicsActive = spd > 0.05 || die.h > 0.02 || Math.abs(die.vz) > 0.02;
 
     if (die.settling) {
       die.settleT += 1/SLERP_FRAMES;
@@ -395,28 +399,20 @@ function stepAnimations() {
       return;
     }
 
-    if (sliding) {
-      // On floor and moving: contact roll is the SOLE rotation source.
-      // Anim path is frozen — don't advance it, don't read from it.
-      // Axis is perpendicular to velocity in the XZ plane.
-      const contactAxis  = normV([-die.vy2d, 0, die.vx]);
-      const contactOmega = spd * ROLL_COEFF;
-      die.curM = mulMM(rotAxis(contactAxis[0], contactAxis[1], contactAxis[2], contactOmega), die.curM);
-    } else {
-      // Airborne or fully stopped: anim path drives rotation.
-      const maxFrame   = die.animPath.length - 1;
-      const speedScale = physicsActive ? 1.0 : Math.max(0.05, spd / SETTLE_SPEED);
-      die.animFrame    = Math.min(die.animFrame + 4.5 * speedScale, maxFrame);
-      die.curM         = die.animPath[Math.floor(die.animFrame)];
+    const maxFrame = die.animPath.length - 1;
 
-      // Bounce-recoil omega (set by stepPhysics on low-h impacts)
-      die.omega *= 0.97;
-      if (onFloor && die.omega > 0.002) {
-        die.curM = mulMM(rotAxis(die.axis[0], die.axis[1], die.axis[2], die.omega), die.curM);
-      }
-    }
+    // Gate: don't advance past the end of the current segment until
+    // physics fires that bounce (segIdx will have advanced by then).
+    const currentSeg    = die.segments[die.segIdx] ?? { start: 0, end: maxFrame };
+    const gateFrame     = die.segIdx < die.segments.length - 1
+      ? currentSeg.end
+      : maxFrame;
 
-    if (!physicsActive && spd < SETTLE_SPEED && die.h < 0.08 && die.apex < 0.06) {
+    // Advance 1 frame per game frame to stay in sync with physics arc durations
+    die.animFrame = Math.min(die.animFrame + 1, gateFrame);
+    die.curM = die.animPath[Math.floor(die.animFrame)];
+
+    if (spd < 0.12 && die.h < 0.01 && die.apex < 0.02 && Math.abs(die.vz) < 0.04) {
       die.settling   = true;
       die.settleT    = 0;
       die.settleFrom = die.curM;
@@ -532,6 +528,7 @@ function updateStatsTable(rolledDice) {
   rollNumber++;
   const groups = buildRollGroups(rolledDice);
   rollHistory.unshift({ n: rollNumber, groups }); // newest first
+  if (rollHistory.length > 100) rollHistory.length = 100;
 
   const panel = document.getElementById('stats-panel');
   if (!panel) return;
@@ -593,17 +590,16 @@ function loop() {
 }
 requestAnimationFrame(loop);
 
-// Result display (minimal - just total)
+// Result display — just "Total: X" or "Total: X + MOD +Y = Z"
 function updateResultDisplay() {
   const el = document.getElementById('result-display');
   if (!el) return;
   const mod   = parseInt(document.getElementById('mod-input').value) || 0;
   const sum   = dice.reduce((s,d) => s+d.outcome, 0);
   const total = sum + mod;
-  const parts = dice.map(d => d.outcome).join(' + ');
   el.textContent = mod !== 0
-    ? `${parts}  +  MOD ${mod>=0?'+':''}${mod}  =  ${total}`
-    : dice.length > 1 ? `${parts}  =  ${total}` : `${total}`;
+    ? `Total: ${sum}  +  ${mod >= 0 ? '+' : ''}${mod}  =  ${total}`
+    : `Total: ${total}`;
 }
 
 // UI
@@ -618,7 +614,7 @@ function buildQueueFromInputs() {
     const n     = input ? Math.max(0, parseInt(input.value) || 0) : 0;
     for (let i=0; i<n; i++) queue.push(type);
   });
-  return queue.length ? queue : ['d6'];
+  return queue;
 }
 
 function getTotalDiceCount() {
@@ -639,7 +635,8 @@ function updateQueueDisplay() {
 }
 
 function roll() {
-  const queue    = buildQueueFromInputs();
+  const queue = buildQueueFromInputs();
+  if (!queue.length) return;
   const total    = getTotalDiceCount();
   const doSkip   = skipAnim || total >= AUTO_SKIP_COUNT;
   const n = queue.length;
@@ -668,9 +665,12 @@ document.getElementById('roll-btn').addEventListener('click', roll);
 
 document.getElementById('clear-btn').addEventListener('click', () => {
   dice = []; rolling = false;
+  document.querySelectorAll('.die-count-input').forEach(inp => {
+    inp.value = 0;
+    inp.dispatchEvent(new Event('input'));
+  });
   const el = document.getElementById('result-display');
   if (el) el.textContent = '';
-  updateQueueDisplay();
 });
 
 // Skip anim toggle
