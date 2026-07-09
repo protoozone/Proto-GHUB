@@ -271,6 +271,12 @@ export default function Home() {
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
           </div>
+          <div className="row">
+            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
+            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
+            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
+            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
+          </div>
         </div>
 
         {/* Right tron wall */}
