@@ -140,7 +140,7 @@ function setVolume(v) {
   const pct = (currentVolume * 100).toFixed(1) + "%"
   volFill.style.width = pct
   volThumb.style.left = pct
-  setMusicVolume(currentVolume)
+  setMusicVolume(currentVolume * 0.3)
 }
 
 let dragging = false

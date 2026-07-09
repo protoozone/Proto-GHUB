@@ -174,7 +174,7 @@ function setVolume(v) {
   const pct = (currentVolume * 100).toFixed(1) + "%"
   volFill.style.width  = pct
   volThumb.style.left  = pct
-  setMusicVolume(currentVolume)  // function exposed by midi-player.js
+  setMusicVolume(currentVolume * 0.3)  // function exposed by midi-player.js
 }
 
 let dragging = false
