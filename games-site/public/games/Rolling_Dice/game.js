@@ -660,7 +660,7 @@ function renderStatsSection(type, group) {
   const faceCounts = group.counts || group;
   const raw        = group.raw   || [];
   const sides    = DIE_SIDES[type] || 6;
-  const faces    = Array.from({length:sides},(_,i)=>sides-i);
+  const faces    = Array.from({length:sides},(_,i)=>sides-i); // high to low
   const total    = faces.reduce((s,f) => s+(faceCounts[f]||0), 0);
   const maxCount = Math.max(...faces.map(f => faceCounts[f]||0), 1);
 
@@ -673,13 +673,15 @@ function renderStatsSection(type, group) {
   heading.textContent = `${type.toUpperCase()}  x${total}  =  ${sum}`;
   section.appendChild(heading);
 
-  if (raw.length > 0) {
+  // Unsorted only when under 100 dice
+  if (raw.length > 0 && raw.length < 100) {
     const unsorted = document.createElement('div');
     unsorted.className = 'stats-unsorted';
     unsorted.textContent = `Unsorted: ${raw.join('  ')}`;
     section.appendChild(unsorted);
   }
 
+  // Sorted highest to lowest, format "<face>: <count>"
   faces.forEach(face => {
     const count = faceCounts[face] || 0;
     if (count === 0) return;
@@ -687,6 +689,7 @@ function renderStatsSection(type, group) {
     row.className = 'stats-row';
     row.innerHTML =
       `<span class="stats-face">${face}</span>` +
+      `<span class="stats-colon">:</span>` +
       `<div class="stats-bar-track"><div class="stats-bar-fill" style="width:${(count/maxCount*100).toFixed(1)}%"></div></div>` +
       `<span class="stats-count">${count}</span>`;
     section.appendChild(row);
@@ -717,7 +720,7 @@ function updateStatsTable(rolledDice) {
   });
   panel.appendChild(currentWrap);
 
-  // History (rolls 2+)
+  // History (rolls 2+) -- show sorted counts + unsorted if under 100
   if (rollHistory.length > 1) {
     const histWrap = document.createElement('div');
     histWrap.className = 'stats-history';
@@ -730,16 +733,21 @@ function updateStatsTable(rolledDice) {
       const item = document.createElement('div');
       item.className = 'stats-history-item';
       const parts = Object.entries(entry.groups).map(([type, group]) => {
-        const raw = group.raw || [];
-        // Use raw order if available, else fall back to sorted counts
-        if (raw.length > 0) {
-          return `${type.toUpperCase()}: ${raw.join(' ')}`;
-        }
-        const sides = DIE_SIDES[type] || 6;
-        const faces = Array.from({length:sides},(_,i)=>sides-i);
+        const raw    = group.raw    || [];
         const counts = group.counts || group;
-        const vals = faces.flatMap(f => Array(counts[f]||0).fill(f));
-        return `${type.toUpperCase()}: ${vals.join(' ')}`;
+        const sides  = DIE_SIDES[type] || 6;
+        const faces  = Array.from({length:sides},(_,i)=>sides-i);
+        const sum    = faces.reduce((s,f)=>s+f*(counts[f]||0),0);
+        const total  = faces.reduce((s,f)=>s+(counts[f]||0),0);
+        // Sorted breakdown: "face:count" pairs for faces that came up
+        const sorted = faces
+          .filter(f=>(counts[f]||0)>0)
+          .map(f=>`${f}:${counts[f]}`)
+          .join(' ');
+        const unsortedPart = raw.length > 0 && raw.length < 100
+          ? `  [${raw.join(' ')}]`
+          : '';
+        return `${type.toUpperCase()} x${total}=${sum}  ${sorted}${unsortedPart}`;
       });
       item.innerHTML =
         `<span class="hist-n">#${entry.n}</span>` +
@@ -831,8 +839,22 @@ function roll() {
   finaliseCurrentRoll();
 
   const total  = getTotalDiceCount();
-  const doSkip = skipAnim || total >= AUTO_SKIP_COUNT;
+  const doSkip   = skipAnim || total >= AUTO_SKIP_COUNT;
+  const noRender = total >= 1000; // above 1000 skip physics/anim entirely
   const n = queue.length;
+
+  if (noRender) {
+    // Just compute outcomes, no dice objects needed
+    dice = queue.map(type => {
+      const sides = DIE_SIDES[type] || 6;
+      return { type, outcome: 1+Math.floor(Math.random()*sides), phase: 'done', curM: [1,0,0,0,1,0,0,0,1], snapM: [1,0,0,0,1,0,0,0,1] };
+    });
+    rolling = false;
+    updateStatsTable(dice);
+    updateResultDisplay();
+    return;
+  }
+
   dice = queue.map((type,i) => {
     const angle = (i/n)*Math.PI*2, off = n>1 ? Math.min(60, 20+n*3) : 0;
     const sides = DIE_SIDES[type] || 6;
