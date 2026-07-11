@@ -42,7 +42,6 @@ And for future plans, we have:
 - With this amount of bullets, this place might be hell
 - A man shaped like a puc, call him puc man
 - This tower really needs some defending
-- Those bricks really need some breaking
 - Cards by yourself
 - Big words daily
 - Roguelike (not lite)
@@ -52,6 +51,8 @@ And for future plans, we have:
 - Bankruptcy
 - Polished tokens on a table with pockets and some white dust
 - Settlers of alarm
+- Checkers but Chinese
+- Sparrow
 
 # License
 This project is licensed under the GNU General Public License v3.0.
