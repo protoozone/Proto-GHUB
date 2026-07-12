@@ -267,7 +267,7 @@ export default function Home() {
           </div>
           <div className="row">
             <div className="column"><GameCard to="/games/Demolition" name="Demolition" artSrc="/assets/demolition.png" /></div>
-            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
+            <div className="column"><GameCard to="/games/DontLu" name="DontLu" artSrc="/assets/'dontlu'.png" /></div>
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
           </div>
