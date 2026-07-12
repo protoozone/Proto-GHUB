@@ -1,49 +1,43 @@
 const canvas = document.getElementById("game")
 const ctx = canvas.getContext("2d")
 
-// --- Canvas sizing ---
-function getTargetSize() {
-  const hudHeight = 40
-  const margin = 24
-  const availableH = window.innerHeight - hudHeight - margin
-  const availableW = window.innerWidth - margin
-  return Math.min(Math.floor(Math.min(availableW, availableH)), 520)
-}
-
 // --- Game state ---
 let score, lives, running, paused
 let ball, paddle, bricks
 let selectedDiff = "easy"
 let selectedLayout = "standard"
 
+// --- Screen dimensions ---
+const W = Math.floor(window.innerWidth * 0.92)
+const H = Math.floor(window.innerHeight * 0.82)
+
+// --- Ball speed relative to screen height (feels consistent across screen sizes) ---
+const BASE_SPEED = H * 0.014   // travels ~0.8% of screen height per frame at 60fps
+
 // --- Difficulty configs ---
 const DIFF_CONFIGS = {
-  easy:   { ballSpeed: 6, paddleW: 100},
-  normal: { ballSpeed: 8, paddleW: 75},
-  hard:   { ballSpeed: 10, paddleW: 55},
+  easy:   { ballSpeed: BASE_SPEED,        paddleW: Math.floor(W * 0.14) },
+  normal: { ballSpeed: BASE_SPEED * 1.2, paddleW: Math.floor(W * 0.10) },
+  hard:   { ballSpeed: BASE_SPEED * 1.4,  paddleW: Math.floor(W * 0.08) },
 }
-
-// --- Canvas dimensions ---
-const W = getTargetSize()
-const H = Math.round(W * 1.1)  // slightly taller than wide
 
 // --- Brick grid constants ---
 const BRICK_COLS   = 14
 const BRICK_ROWS   = 8
-const BRICK_PAD    = 2
-const BRICK_TOP    = 48
-const BRICK_H      = 18
+const BRICK_PAD    = Math.max(2, Math.floor(H * 0.005))  // ~0.5% H gap between bricks
+const BRICK_TOP    = Math.floor(H * 0.12)                // 12% H gap from top
+const BRICK_H      = Math.floor(H * 0.025)                // each brick is 2% of screen height
 
 // --- Brick colours by row (warm demolition palette) ---
 const ROW_COLORS = [
-  "#ff2a2a",  // row 0: red    (1 pt)
-  "#ff6a00",  // row 1: orange (1 pt)
-  "#ffc400",  // row 2: amber  (1 pt)
+  "#ff2a2a",  // row 0: red    (3 pt)
+  "#ff6a00",  // row 1: orange (3 pt)
+  "#ffc400",  // row 2: amber  (2 pt)
   "#aaff00",  // row 3: lime   (2 pt)
   "#00e5ff",  // row 4: cyan   (2 pt)
-  "#5744ff",  // row 5: blue   (2 pt)
-  "#9b44ff",  // row 6: purple (3 pt)
-  "#ff44f6",  // row 7: violet (3 pt)
+  "#5744ff",  // row 5: blue   (1 pt)
+  "#9b44ff",  // row 6: purple (1 pt)
+  "#ff44f6",  // row 7: violet (1 pt)
 ]
 const ROW_POINTS = [3, 3, 2, 2, 2, 1, 1, 1]
 
@@ -94,6 +88,8 @@ function initGame(diff, layout) {
   lives = 3
   running = true
   paused  = false
+  mouseControl = true
+  mousePaddleTarget = null
   document.getElementById("pause-btn").textContent = "PAUSE"
 
   // Paddle
@@ -114,7 +110,7 @@ function initGame(diff, layout) {
     vx: Math.cos(angle) * cfg.ballSpeed,
     vy: Math.sin(angle) * cfg.ballSpeed,
     speed: cfg.ballSpeed,
-    stuck: true,  // wait for first launch input
+    stuck: true,
   }
 
   bricks = buildBricks(layout)
@@ -129,7 +125,7 @@ function updateHUD() {
     `SCORE: ${score} | LIVES: ${lives}`
 }
 
-// --- Volume (identical to Big Worm) ---
+// --- Volume ---
 const volTrack = document.getElementById("vol-track")
 const volFill  = document.getElementById("vol-fill")
 const volThumb = document.getElementById("vol-thumb")
@@ -154,13 +150,13 @@ function updateFromEvent(e) {
   setVolume(ratio)
 }
 
-// --- Paddle: mouse ---
+// --- Paddle: mouse (drag-towards — store target, lerp in update) ---
+let mousePaddleTarget = null
 canvas.addEventListener("mousemove", (e) => {
   if (!running || paused) return
   const rect = canvas.getBoundingClientRect()
   const mx   = (e.clientX - rect.left) * (canvas.width / rect.width)
-  paddle.x   = Math.max(0, Math.min(W - paddle.w, mx - paddle.w / 2))
-  if (ball.stuck) ball.x = paddle.x + paddle.w / 2
+  mousePaddleTarget = Math.max(0, Math.min(W - paddle.w, mx - paddle.w / 2))
 })
 
 // --- Paddle: touch ---
@@ -173,16 +169,14 @@ canvas.addEventListener("touchmove", (e) => {
   if (ball.stuck) ball.x = paddle.x + paddle.w / 2
 }, { passive: false })
 
-// --- Launch ball on click / tap / space ---
+// --- Launch ball ---
 function launchBall() {
   if (!ball.stuck) return
   ball.stuck = false
-  // direction already set in init; just un-stick
 }
 
 canvas.addEventListener("click", (e) => {
-  if (!running) {
-    // click game-over options
+  if (!running) {   
     const rect  = canvas.getBoundingClientRect()
     const tapY  = (e.clientY - rect.top) * (canvas.height / rect.height)
     const menuY  = H / 2 + 56
@@ -200,6 +194,8 @@ canvas.addEventListener("click", (e) => {
     if (tapY >= resetY - 16 && tapY <= resetY + 8) { stopMusic(); playMusic(); initGame(selectedDiff, selectedLayout); return }
     return
   }
+  mouseControl = true
+  mousePaddleTarget = paddle.x  
   launchBall()
 })
 
@@ -207,6 +203,11 @@ canvas.addEventListener("click", (e) => {
 const keys = {}
 document.addEventListener("keydown", (e) => {
   keys[e.key] = true
+
+  if ((e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "a" || e.key === "d") && running && !paused) {
+    mouseControl = false
+    mousePaddleTarget = null
+  }
 
   if (e.key === "Escape" && running)  { togglePause(); return }
   if (e.key === " ") {
@@ -253,23 +254,75 @@ let lastTime = 0
 function loop(ts) {
   requestAnimationFrame(loop)
   if (!running || paused) return
-  const dt = Math.min(ts - lastTime, 50) / (1000 / 60)  // frame-rate normalised
+  const dt = Math.min(ts - lastTime, 50) / (1000 / 60)
   lastTime = ts
   update(dt)
   draw()
 }
 requestAnimationFrame(loop)
 
+// --- CCD paddle sweep ---
+// Instead of checking where the ball IS after moving, we check where it CROSSED
+// the paddle face during this frame. This prevents tunnelling at high speeds.
+function sweepPaddle(prevX, prevY) {
+  if (ball.vy <= 0) return false  // moving away from paddle, skip
+
+  const paddleFace = paddle.y - ball.r  // the Y the ball centre must reach
+
+  // Has the ball centre crossed the paddle face this frame?
+  if (prevY > paddleFace || ball.y < paddleFace) return false
+
+  // Interpolate X position at the exact moment of crossing
+  const t      = (paddleFace - prevY) / (ball.y - prevY)
+  const crossX = prevX + (ball.x - prevX) * t
+
+  // Within paddle bounds?
+  if (crossX < paddle.x || crossX > paddle.x + paddle.w) return false
+
+  // Resolve collision: place ball exactly on surface and reflect
+  ball.y  = paddleFace
+  ball.vy = -Math.abs(ball.vy)
+
+  // Deflect horizontally based on hit position; max vx = 0.9x ball speed
+  const hitPos  = (crossX - paddle.x) / paddle.w  // 0..1
+  const deflect = (hitPos - 0.5) * 2              // -1..1
+  ball.vx = deflect * ball.speed * 0.9
+
+  // Renormalise to constant speed
+  const spd = Math.hypot(ball.vx, ball.vy)
+  ball.vx = (ball.vx / spd) * ball.speed
+  ball.vy = (ball.vy / spd) * ball.speed
+
+  return true
+}
+
 // --- Update ---
 function update(dt) {
-  // Keyboard paddle movement
-  const PADDLE_SPEED = 6
+  // Keyboard paddle speed: hard ball speed * 0.9 / sqrt(2)
+  // sqrt(2) accounts for max 45-degree horizontal ball component
+  const PADDLE_SPEED = DIFF_CONFIGS.hard.ballSpeed * 1.3 / Math.SQRT2
   if (keys["ArrowLeft"]  || keys["a"]) paddle.x = Math.max(0, paddle.x - PADDLE_SPEED * dt)
   if (keys["ArrowRight"] || keys["d"]) paddle.x = Math.min(W - paddle.w, paddle.x + PADDLE_SPEED * dt)
+
+  // Mouse drag: lerp paddle toward the cursor target each frame
+  if (mouseControl && mousePaddleTarget !== null) {
+    const diff = mousePaddleTarget - paddle.x
+    const step = PADDLE_SPEED * dt
+    if (Math.abs(diff) <= step) {
+      paddle.x = mousePaddleTarget
+    } else {
+      paddle.x += Math.sign(diff) * step
+    }
+  }
+
   if (ball.stuck) {
-    ball.x = paddle.x + paddle.w / 2
+    ball.x = paddle.x + paddle.w / 2  // stuck ball follows lerped paddle
     return
   }
+
+  // Store pre-move position for CCD sweep
+  const prevX = ball.x
+  const prevY = ball.y
 
   // Move ball
   ball.x += ball.vx * dt
@@ -297,7 +350,6 @@ function update(dt) {
       endGame(false)
       return
     }
-    // Reset ball to paddle
     ball.stuck = true
     ball.x = paddle.x + paddle.w / 2
     ball.y = paddle.y - ball.r - 2
@@ -307,25 +359,8 @@ function update(dt) {
     return
   }
 
-  // Paddle collision
-  if (
-    ball.vy > 0 &&
-    ball.y + ball.r >= paddle.y &&
-    ball.y + ball.r <= paddle.y + paddle.h &&
-    ball.x >= paddle.x &&
-    ball.x <= paddle.x + paddle.w
-  ) {
-    ball.vy = -Math.abs(ball.vy)
-    // Angle based on hit position within paddle
-    const hitPos  = (ball.x - paddle.x) / paddle.w   // 0..1
-    const deflect = (hitPos - 0.5) * 2               // -1..1
-    ball.vx = deflect * ball.speed * 1.1
-    // Maintain constant speed
-    const spd = Math.hypot(ball.vx, ball.vy)
-    ball.vx = (ball.vx / spd) * ball.speed
-    ball.vy = (ball.vy / spd) * ball.speed
-    ball.y  = paddle.y - ball.r
-  }
+  // CCD paddle collision — sweep the path taken this frame
+  sweepPaddle(prevX, prevY)
 
   // Brick collisions
   let activeBricks = 0
@@ -347,18 +382,17 @@ function update(dt) {
       brick.active = false
 
       var scoreMod = 0
-      if (ball.speed == 6) {
+      if (ball.speed == BASE_SPEED) {
         scoreMod = 1
-      } else if (ball.speed == 8) {
+      } else if (ball.speed == BASE_SPEED * 1.2) {
         scoreMod = 2
       } else {
         scoreMod = 3
       }
 
-      score += brick.points*scoreMod
+      score += brick.points * scoreMod
       updateHUD()
 
-      // Determine which face was hit for correct bounce
       const overlapL = ball.x + ball.r - bLeft
       const overlapR = bRight  - (ball.x - ball.r)
       const overlapT = ball.y  + ball.r - bTop
@@ -371,7 +405,7 @@ function update(dt) {
       } else {
         ball.vy = -ball.vy
       }
-      break  // one brick per frame avoids tunnelling artifacts
+      break
     }
   }
 
@@ -383,24 +417,20 @@ function draw() {
   ctx.fillStyle = "#0a0a0f"
   ctx.fillRect(0, 0, W, H)
 
-  // Bricks
   for (const brick of bricks) {
     if (!brick.active) continue
     ctx.fillStyle = brick.color
     ctx.fillRect(brick.x, brick.y, brick.w, brick.h)
   }
 
-  // Paddle
   ctx.fillStyle = "#ffffff"
   ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h)
 
-  // Ball
   ctx.beginPath()
   ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2)
   ctx.fillStyle = "#ff6a00"
   ctx.fill()
 
-  // "tap / space to launch" prompt
   if (ball.stuck && running) {
     ctx.fillStyle = "#888888"
     ctx.font = "11px monospace"
@@ -433,7 +463,7 @@ function endGame(won) {
     ctx.font = "bold 20px monospace"
     ctx.textAlign = "center"
     ctx.fillText(won ? "DEMOLITION COMPLETE!" : "GAME OVER", W / 2, H / 2)
-    ctx.fillText(`Score: ${score}`, W / 2, H / 2 + 30)
+    ctx.fillText(`Score: ${Math.max(0, score + ((lives-1)*185))}`, W / 2, H / 2 + 30)
     ctx.font = "13px monospace"
     ctx.fillStyle = "#aaaaaa"
     ctx.fillText("ESC: Back to Main Menu", W / 2, H / 2 + 56)
