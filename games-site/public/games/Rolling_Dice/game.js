@@ -797,7 +797,7 @@ function updateResultDisplay() {
   const sum   = dice.reduce((s,d) => s+d.outcome, 0);
   const total = sum + mod;
   el.textContent = mod !== 0
-    ? `Total: ${sum}  +  ${mod >= 0 ? '+' : ''}${mod}  =  ${total}`
+    ? `Total: ${sum}  +  ${mod}  =  ${total}`
     : `Total: ${total}`;
 }
 
