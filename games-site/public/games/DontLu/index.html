@@ -7,118 +7,98 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0f1118;
-  --surface:#1a1f2e;
-  --border:#2e3550;
-  --accent:#e8a838;
-  --text:#e8e4d8;
-  --muted:#8891a8;
-  --font:system-ui,-apple-system,sans-serif;
-  --mono:'Courier New',monospace;
+  --bg:#0f1118;--surface:#1a1f2e;--border:#2e3550;
+  --accent:#e8a838;--text:#e8e4d8;--muted:#8891a8;
+  --font:system-ui,-apple-system,sans-serif;--mono:'Courier New',monospace;
 }
 html,body{height:100%}
-body{
-  background:var(--bg);
-  color:var(--text);
-  font-family:var(--font);
-  min-height:100dvh;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  padding:1.5rem 1rem 2rem;
-  gap:1.25rem;
-  overflow-x:hidden;
-}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100dvh;
+  display:flex;flex-direction:column;align-items:center;padding:1.5rem 1rem 2rem;
+  gap:1.25rem;overflow-x:hidden;}
 body.in-game{padding:0;gap:0;overflow:hidden;height:100dvh}
-
 header{display:flex;flex-direction:column;align-items:center;gap:0.2rem}
 h1{font-size:1.5rem;font-weight:700;color:var(--accent);letter-spacing:-0.02em}
 .sub{font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em}
-
-.chrome{display:flex;flex-direction:column;align-items:center;gap:1.25rem;width:100%}
+.chrome{display:flex;flex-direction:column;align-items:center;gap:1.1rem;width:100%}
 body.in-game .chrome{display:none}
 
+/* Config row */
 .config-row{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;justify-content:center}
 .config-field{display:flex;flex-direction:column;align-items:center;gap:0.35rem}
 .config-label{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)}
-.config-input{
-  width:72px;padding:0.4rem 0.6rem;
-  background:var(--surface);border:1px solid var(--border);border-radius:8px;
-  color:var(--text);font-size:1rem;font-family:var(--mono);text-align:center;
-  transition:border-color .15s;-moz-appearance:textfield;
-}
+.config-input{width:72px;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;color:var(--text);font-size:1rem;font-family:var(--mono);text-align:center;
+  transition:border-color .15s;-moz-appearance:textfield;}
 .config-input::-webkit-inner-spin-button,.config-input::-webkit-outer-spin-button{-webkit-appearance:none}
 .config-input:focus{outline:none;border-color:var(--accent)}
 
+/* Rule toggles */
+.rules-panel{display:flex;flex-direction:column;align-items:center;gap:0.5rem;width:100%}
+.rules-title{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted)}
+.rules-row{display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:center}
+.rule-toggle{display:flex;align-items:center;gap:0.4rem;padding:0.3rem 0.7rem;
+  background:var(--surface);border:1px solid var(--border);border-radius:7px;
+  cursor:pointer;user-select:none;font-size:0.75rem;color:var(--muted);
+  transition:border-color .15s,color .15s,background .15s;}
+.rule-toggle input{accent-color:var(--accent);cursor:pointer;width:13px;height:13px}
+.rule-toggle:has(input:checked){border-color:var(--accent);color:var(--text);background:rgba(232,168,56,0.08)}
+
+/* Player colour pickers */
+.colour-panel{display:flex;flex-direction:column;align-items:center;gap:0.4rem;width:100%}
+.colour-row{display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:center}
+.colour-swatch{display:flex;align-items:center;gap:0.35rem;font-size:0.75rem;color:var(--muted)}
+.colour-swatch input[type=color]{width:28px;height:28px;padding:1px;border:1px solid var(--border);
+  border-radius:5px;background:none;cursor:pointer;}
+.colour-swatch input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+.colour-swatch input[type=color]::-webkit-color-swatch{border:none;border-radius:3px}
+
+/* Buttons */
 .action-row{display:flex;align-items:center;gap:0.6rem;min-height:2.2rem;flex-wrap:wrap;justify-content:center}
 .board-info{font-size:0.72rem;color:var(--muted);font-family:var(--mono);letter-spacing:0.04em}
-.play-btn{
-  padding:0.38rem 1.1rem;background:rgba(232,168,56,0.15);border:1px solid var(--accent);
-  border-radius:8px;color:var(--accent);font-size:0.82rem;font-family:var(--font);
-  font-weight:600;cursor:pointer;transition:background .15s,transform .1s;white-space:nowrap;
-}
+.play-btn{padding:0.38rem 1.1rem;background:rgba(232,168,56,0.15);border:1px solid var(--accent);
+  border-radius:8px;color:var(--accent);font-size:0.82rem;font-family:var(--font);font-weight:600;
+  cursor:pointer;transition:background .15s,transform .1s;white-space:nowrap;}
 .play-btn:hover{background:rgba(232,168,56,0.28);transform:translateY(-1px)}
 .play-btn:active{transform:translateY(0)}
-.gen-btn{
-  padding:0.38rem 1.1rem;background:var(--surface);border:1px solid var(--border);
+.gen-btn{padding:0.38rem 1.1rem;background:var(--surface);border:1px solid var(--border);
   border-radius:8px;color:var(--text);font-size:0.82rem;font-family:var(--font);
-  cursor:pointer;transition:background .15s,border-color .15s;white-space:nowrap;
-}
+  cursor:pointer;transition:background .15s,border-color .15s;white-space:nowrap;}
 .gen-btn:hover{border-color:var(--accent);background:rgba(232,168,56,0.08)}
 
+/* Viewer */
 #viewer-panel{display:flex;flex-direction:column;align-items:center;gap:0.75rem;width:100%}
-.canvas-wrap{
-  background:#0c0e14;border:1px solid var(--border);border-radius:12px;
-  padding:10px;box-shadow:0 8px 40px rgba(0,0,0,.6);
-}
+.canvas-wrap{background:#0c0e14;border:1px solid var(--border);border-radius:12px;
+  padding:10px;box-shadow:0 8px 40px rgba(0,0,0,.6);}
 canvas{display:block;border-radius:6px;cursor:default;-webkit-tap-highlight-color:transparent}
 .stats{display:flex;gap:1.5rem;font-size:0.7rem;color:var(--muted);font-family:var(--mono)}
 .stat-val{color:var(--accent);font-weight:600}
 .error-msg{font-size:0.75rem;color:#e05c5c;font-family:var(--mono);min-height:1rem}
 
+/* Game */
 #game-panel{display:none;flex-direction:column;width:100%;height:100%}
 body.in-game #game-panel{display:flex}
-
-#hud{
-  width:100%;background:#111;border-bottom:1px solid #2a2a3e;
-  padding:7px 16px;display:flex;align-items:center;gap:12px;
-  font-size:13px;color:#ddd;flex-shrink:0;flex-wrap:wrap;
-}
+#hud{width:100%;background:#111;border-bottom:1px solid #2a2a3e;padding:7px 16px;
+  display:flex;align-items:center;gap:12px;font-size:13px;color:#ddd;flex-shrink:0;flex-wrap:wrap;}
 #turn-badge{padding:2px 10px;border-radius:4px;font-weight:700;font-size:12px;transition:background .3s,color .3s}
 #game-status{color:#aaa;font-size:11px;margin-left:auto}
-.hud-btn{
-  background:#2a2a3e;color:#ccc;border:1px solid #444;
-  padding:4px 11px;border-radius:5px;cursor:pointer;font-size:11px;font-family:var(--font);
-}
+.hud-btn{background:#2a2a3e;color:#ccc;border:1px solid #444;padding:4px 11px;
+  border-radius:5px;cursor:pointer;font-size:11px;font-family:var(--font);}
 .hud-btn:hover{background:#3a3a5e}
 .hud-btn:disabled{opacity:0.4;cursor:default}
-
-#game-canvas-wrap{
-  flex:1;display:flex;align-items:center;justify-content:center;
-  background:#0c0e14;min-height:0;width:100%;overflow:hidden;
-}
+#game-canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;
+  background:#0c0e14;min-height:0;width:100%;overflow:hidden;}
 #game-canvas{display:block;cursor:pointer;-webkit-tap-highlight-color:transparent}
 
-.back-btn{
-  padding:0.35rem 0.85rem;background:var(--surface);border:1px solid var(--border);
+.back-btn{padding:0.35rem 0.85rem;background:var(--surface);border:1px solid var(--border);
   border-radius:7px;color:var(--muted);font-size:0.78rem;font-family:var(--font);
-  cursor:pointer;transition:border-color .15s,color .15s;text-decoration:none;
-}
+  cursor:pointer;transition:border-color .15s,color .15s;text-decoration:none;}
 .back-btn:hover{border-color:var(--accent);color:var(--text)}
-
-@media(max-width:500px){
-  .config-input{width:60px;font-size:.9rem}
-  .play-btn,.gen-btn{font-size:.78rem;padding:.35rem .85rem}
-}
+@media(max-width:500px){.config-input{width:60px;font-size:.9rem}.play-btn,.gen-btn{font-size:.78rem;padding:.35rem .85rem}}
 </style>
 </head>
 <body>
-
 <div class="chrome">
-  <header>
-    <h1>DontLu</h1>
-  </header>
-
+  <header><h1>DontLu</h1></header>
   <button class="back-btn" onclick="returnToHub()">← Back To Hub</button>
 
   <div class="config-row">
@@ -133,8 +113,26 @@ body.in-game #game-panel{display:flex}
     <button class="gen-btn" onclick="generate()">⟳ Preview</button>
   </div>
 
-  <div class="error-msg" id="error-msg"></div>
+  <div class="rules-panel">
+    <span class="rules-title">Rules</span>
+    <div class="rules-row">
+      <label class="rule-toggle">
+        <input type="checkbox" id="rule-three6" checked/>
+        Three 6s = turn loss
+      </label>
+      <label class="rule-toggle">
+        <input type="checkbox" id="rule-blockade"/>
+        Blockading (2 pieces blocks opponents)
+      </label>
+    </div>
+  </div>
 
+  <div class="colour-panel">
+    <span class="rules-title">Player Colours</span>
+    <div class="colour-row" id="colour-row"></div>
+  </div>
+
+  <div class="error-msg" id="error-msg"></div>
   <div class="action-row">
     <span class="board-info" id="board-info">&nbsp;</span>
     <button class="play-btn" id="play-btn" style="display:none" onclick="launchGame()">▶ Play</button>
@@ -165,84 +163,134 @@ body.in-game #game-panel{display:flex}
 <script>
 function returnToHub() {
   if (window.parent !== window) window.parent.postMessage('returnToHub', '*')
-  else alert("Running standalone — return to your hub manually.")
+  else alert("This game is currently running on your device. To return to the hub, please visit the website or install it locally.")
 }
 
 let currentN = 2, currentK = 4, gameInst = null, inGame = false
+
+// Default colours per slot (randomised on first load, then user-editable)
+const DEFAULT_COLOURS = [
+  '#e84040','#4488ee','#44bb55','#f0b840',
+  '#cc55dd','#ee6622','#33cccc','#ff88aa',
+]
+let playerColours = [...DEFAULT_COLOURS]
+
+function buildColourPickers(n) {
+  const row = document.getElementById('colour-row')
+  row.innerHTML = ''
+  for (let i = 0; i < n; i++) {
+    if (i >= playerColours.length) playerColours.push(randomHex())
+    const label = document.createElement('label')
+    label.className = 'colour-swatch'
+    const inp = document.createElement('input')
+    inp.type = 'color'
+    inp.value = playerColours[i]
+    inp.dataset.idx = i
+    inp.addEventListener('input', e => {
+      playerColours[parseInt(e.target.dataset.idx)] = e.target.value
+      drawBoardPreview(document.getElementById('viewer-canvas'), currentN, currentK, playerColours)
+    })
+    label.appendChild(inp)
+    label.append(`P${i+1}`)
+    row.appendChild(label)
+  }
+}
+
+function randomHex() {
+  const h = Math.floor(Math.random()*360), s = 65, l = 48
+  return hslToHexJS(h, s, l)
+}
+function hslToHexJS(h,s,l){
+  s/=100;l/=100;const a=s*Math.min(l,1-l);
+  const f=n=>{const k=(n+h/30)%12;return Math.round(255*(l-a*Math.max(Math.min(k-3,9-k,1),-1))).toString(16).padStart(2,'0');};
+  return`#${f(0)}${f(8)}${f(4)}`;
+}
+
+function getColours(n) {
+  const out = []
+  for (let i = 0; i < n; i++) out.push(playerColours[i] || randomHex())
+  return out
+}
+
+function getRules() {
+  return {
+    threeSixLoss: document.getElementById('rule-three6').checked,
+    blockading:   document.getElementById('rule-blockade').checked,
+  }
+}
 
 function validate() {
   const n = parseInt(document.getElementById('input-n').value)
   const k = parseInt(document.getElementById('input-k').value)
   const err = document.getElementById('error-msg')
-  if (isNaN(n) || n < 1) { err.textContent = 'Need at least 1 player.'; return null }
-  if (isNaN(k) || k < 1) { err.textContent = 'Need at least 1 figure.'; return null }
-  err.textContent = ''
-  return { n, k }
+  if (isNaN(n)||n<1){err.textContent='Need at least 1 player.';return null}
+  if (isNaN(k)||k<1){err.textContent='Need at least 1 figure.';return null}
+  err.textContent=''
+  return {n,k}
 }
 
 function generate() {
-  const cfg = validate()
-  if (!cfg) return
-  currentN = cfg.n; currentK = cfg.k
+  const cfg = validate(); if (!cfg) return
+  currentN=cfg.n; currentK=cfg.k
+  buildColourPickers(currentN)
 
   const canvas = document.getElementById('viewer-canvas')
-  const maxW = Math.min(window.innerWidth - 56, 480)
+  const maxW = Math.min(window.innerWidth-56, 480)
   canvas.width = canvas.height = maxW
 
-  const pathLen = currentN === 1 ? 'linear' : (12 * currentN - 1) + ' nodes'
   document.getElementById('board-info').textContent =
-    `${currentN} player${currentN>1?'s':''} · ${currentK} figure${currentK>1?'s':''} · ${pathLen}`
+    `${currentN} player${currentN>1?'s':''} · ${currentK} figure${currentK>1?'s':''}`
   document.getElementById('play-btn').style.display = 'inline-block'
 
-  const t0 = performance.now()
-  drawBoardPreview(canvas, currentN, currentK)
-  const t1 = performance.now()
+  const t0=performance.now()
+  drawBoardPreview(canvas, currentN, currentK, getColours(currentN))
+  const t1=performance.now()
 
   document.getElementById('stats').innerHTML =
-    `<span>players <span class="stat-val">${currentN}</span></span>` +
-    `<span>figures <span class="stat-val">${currentK}</span></span>` +
+    `<span>players <span class="stat-val">${currentN}</span></span>`+
+    `<span>figures <span class="stat-val">${currentK}</span></span>`+
     `<span>render <span class="stat-val">${(t1-t0).toFixed(1)}ms</span></span>`
 }
 
 function sizeGameCanvas() {
-  const wrap = document.getElementById('game-canvas-wrap')
-  const gc   = document.getElementById('game-canvas')
-  const rect = wrap.getBoundingClientRect()
-  const S = Math.max(300, Math.min(rect.width, rect.height) - 24)
-  gc.width = S; gc.height = S
+  const wrap=document.getElementById('game-canvas-wrap')
+  const gc=document.getElementById('game-canvas')
+  const rect=wrap.getBoundingClientRect()
+  const S=Math.max(300,Math.min(rect.width,rect.height)-24)
+  gc.width=S; gc.height=S
 }
 
 function launchGame() {
-  const cfg = validate()
-  if (!cfg) return
-  currentN = cfg.n; currentK = cfg.k
-  inGame = true
-  gameInst?.destroy()
-  gameInst = null
+  const cfg=validate(); if (!cfg) return
+  currentN=cfg.n; currentK=cfg.k
+  inGame=true
+  gameInst?.destroy(); gameInst=null
   document.body.classList.add('in-game')
-  requestAnimationFrame(() => {
+  requestAnimationFrame(()=>{
     sizeGameCanvas()
-    const gc = document.getElementById('game-canvas')
-    const hudEl = {
-      badge:   document.getElementById('turn-badge'),
-      status:  document.getElementById('game-status'),
-      rollBtn: document.getElementById('roll-btn'),
+    const gc=document.getElementById('game-canvas')
+    const hudEl={
+      badge:  document.getElementById('turn-badge'),
+      status: document.getElementById('game-status'),
+      rollBtn:document.getElementById('roll-btn'),
     }
-    gameInst = new LudoGame(gc, hudEl, { n: currentN, k: currentK })
+    gameInst=new LudoGame(gc, hudEl, {
+      n:currentN, k:currentK,
+      colours:getColours(currentN),
+      rules:getRules(),
+    })
   })
 }
 
-window.exitGame = function() {
-  inGame = false
-  gameInst?.destroy()
-  gameInst = null
+window.exitGame=function(){
+  inGame=false; gameInst?.destroy(); gameInst=null
   document.body.classList.remove('in-game')
   generate()
 }
-window.resetGame = () => gameInst?.reset()
+window.resetGame=()=>gameInst?.reset()
 
-window.addEventListener('resize', () => {
-  if (inGame) { sizeGameCanvas(); gameInst?.render() }
+window.addEventListener('resize',()=>{
+  if(inGame){sizeGameCanvas();gameInst?.render();}
   else generate()
 })
 
