@@ -465,7 +465,7 @@
   <script>
     function returnToHub() {
       if (window.parent !== window) window.parent.postMessage('returnToHub', '*');
-      else alert("Running standalone -- visit the hub to navigate.");
+      else alert("This game is currently running on your device. To return to the hub, please visit the website or install it locally.");
     }
     // Left click increments, right click decrements
     document.querySelectorAll('.die-btn').forEach(btn => {
