@@ -258,6 +258,7 @@ export default function Home() {
             do so via the following github link: <br />
             https://github.com/protoozone/Proto-GHUB/tree/main/games-site
           </p>
+          <br />
           <p>
             Here's also a link to my ko-fi, donations are entirely optional, so <br />
             only feel free to if you have the means and enjoy: https://ko-fi.com/protozone
