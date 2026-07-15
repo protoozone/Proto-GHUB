@@ -58,8 +58,8 @@ And for future plans, we have:
 This project is licensed under the GNU General Public License v3.0.
 
 You are free to use, modify, and self-host this project. 
-The only restriction is that you may never privatise it or use it 
-for commercial gain. Any derivative work must remain open source 
-under the same license.
+The only restriction is that you may not privatise it or use it 
+for commercial purposes. Any derivative work must remain open 
+source under the same license.
 
 See LICENSE for details.
