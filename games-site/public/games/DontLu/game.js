@@ -56,20 +56,14 @@ const v2={
 //   outerCorner(grid, col) = grid.mid + (col-1)*sq * sideDir + 6*sq * outDir
 // col=0 → left outer corner, col=2 → right outer corner
 // ─────────────────────────────────────────────────────────────────────────────
+// outerCorner: cell centre of (col, row=0) — the outermost row.
 function outerCorner(grid, col, sq) {
-  return v2.add(
-    v2.add(grid.mid, v2.scale(grid.sideDir, (col - 1) * sq)),
-    v2.scale(grid.outDir, 6 * sq)
-  );
+  return cellCentre(grid, col, 0, sq);
 }
 
-// outerCorner returns the CELL CENTRE of (col, row=0) — used for node positions.
-// outerCornerPt returns the actual CORNER POINT of the outer face of that cell,
-// i.e. cell centre + 0.5*sq outward + 0.5*sq along side toward outside.
-// sideSgn: +1 = toward col-2 edge, -1 = toward col-0 edge
+// outerCornerPt: true outer corner point of (col, row=0) cell.
+// This is cell centre + 0.5*sq outward ± 0.5*sq along side.
 function outerCornerPt(grid, col, sq) {
-  // col=0 → left outer corner point: cell centre + 0.5*sq outward - 0.5*sq along sideDir
-  // col=2 → right outer corner point: cell centre + 0.5*sq outward + 0.5*sq along sideDir
   const centre = outerCorner(grid, col, sq);
   const sideSgn = col === 0 ? -1 : 1;
   return v2.add(
@@ -78,50 +72,48 @@ function outerCornerPt(grid, col, sq) {
   );
 }
 
-// Cell centre for (col, row) in a grid
+// Cell centre for (col, row) in a grid. Rows 0..5, row 0=outermost, row 5=innermost.
 function cellCentre(grid, col, row, sq) {
   return v2.add(
     v2.add(grid.mid, v2.scale(grid.sideDir, (col - 1) * sq)),
-    v2.scale(grid.outDir, (6 - row - 0.5) * sq)
+    v2.scale(grid.outDir, (5.5 - row) * sq)
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// PATH BUILDER  (shared for all n≥2)
-// ─────────────────────────────────────────────────────────────────────────────
+// Grid: 3 cols × 6 rows (rows 0..5). Row 0=outermost, row 5=innermost.
+// Path steps from (2,5) of grid i into (0,5) of grid i+1 as an explicit node.
+// Home stretch: (1,1)→(1,2)→(1,3)→(1,4)→(1,5)→end (5 steps).
 function buildPath(playerIndex, n) {
   const g = k => `g${(playerIndex + k) % n}`;
   const path = [];
 
-  // Own grid: right arm inward, (2,1)→(2,6)
-  for (let r = 1; r <= 6; r++) path.push(`${g(0)}_c2_r${r}`);
+  // Own right arm inward: rows 1..5
+  for (let r = 1; r <= 5; r++) path.push(`${g(0)}_c2_r${r}`);
 
-  // Each opponent grid in order
+  // Each opponent grid: step into (0,5), traverse left arm out, back, right arm in
   for (let k = 1; k < n; k++) {
     const gid = g(k);
-    // Enter at (0,6) [canonical = prev grid's (2,6)], traverse left arm out, top, right arm in
-    for (let r = 5; r >= 0; r--) path.push(`${gid}_c0_r${r}`);
-    path.push(`${gid}_c1_r0`);
-    path.push(`${gid}_c2_r0`);
-    for (let r = 1; r <= 6; r++) path.push(`${gid}_c2_r${r}`);
+    path.push(`${gid}_c0_r5`);                      // step into innermost left node
+    for (let r = 4; r >= 0; r--) path.push(`${gid}_c0_r${r}`); // left arm outward
+    path.push(`${gid}_c1_r0`);                      // back centre
+    path.push(`${gid}_c2_r0`);                      // back right
+    for (let r = 1; r <= 5; r++) path.push(`${gid}_c2_r${r}`); // right arm inward
   }
 
-  // Re-enter own grid: left arm out, top, then home stretch col 1
+  // Re-enter own grid: step into (0,5), left arm out, back centre, home stretch
   const og = g(0);
-  for (let r = 5; r >= 0; r--) path.push(`${og}_c0_r${r}`);
+  path.push(`${og}_c0_r5`);
+  for (let r = 4; r >= 0; r--) path.push(`${og}_c0_r${r}`);
   path.push(`${og}_c1_r0`);
-  for (let r = 1; r <= 6; r++) path.push(`${og}_c1_r${r}`);
+  for (let r = 1; r <= 5; r++) path.push(`${og}_c1_r${r}`);
   path.push('end');
 
   return path;
 }
 
-// Canonical node id: g[i]_c0_r6 is the same square as g[(i-1+n)%n]_c2_r6
-function canonicalId(id, n) {
-  const m = id.match(/^g(\d+)_c0_r6$/);
-  if (m) return `g${(parseInt(m[1])-1+n)%n}_c2_r6`;
-  return id;
-}
+// For n>=3: no shared nodes between grids. Pieces move from end of one grid
+// to start of next in the path; grids are visually independent.
+function canonicalId(id, n) { return id; }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CASE n=1: single straight lane
@@ -148,10 +140,9 @@ function buildBoard2(k, colours) {
   const paths=[buildPath(0,2),buildPath(1,2)];
   return { n:2, k, colours, paths,
     layout(W,H) {
-      // Fit two stacked 3×6 grids with a 3×3 end zone between them
-      // Total height needed: 6*sq + 3*sq + 6*sq = 15*sq → sq = H*avail/15
+      // Two 6-row grids stacked: total height = 6*sq + 6*sq = 12*sq
       const avail=Math.min(W,H)*0.88;
-      const sq=Math.min(avail/15, W*0.88/3);
+      const sq=Math.min(avail/12, W*0.88/3);
       this.sq=sq;
       const cx=W/2, cy=H/2;
       this.cx=cx; this.cy=cy;
@@ -160,32 +151,33 @@ function buildBoard2(k, colours) {
       // The inner "n-gon" for n=2 is just the centre point — but we need
       // an inner structure. For n=2 the inner shape is a rectangle of width=3*sq,
       // height=3*sq (the end zone), so innerR equivalent = 1.5*sq (half the end zone height).
-      // Row 6 (innermost) of each grid abuts the end zone.
-      // Row r of grid 0: y = cy - 1.5*sq - (6-r-0.5)*sq  (row6 centre = cy-1.5*sq-0.5*sq? no)
-      // Let's say: grid 0 row 6 centre is at y = cy - 1.5*sq - 0.5*sq = cy - 2*sq
-      // grid 0 row r centre: y = cy - 2*sq - (5-r)*sq  ... let's define cleanly:
-      // grid 0 row r: y = cy - (1.5 + 6 - r - 0.5)*sq = cy - (7-r)*sq
-      // r=6: y = cy - 1*sq  ✓ (just inside end zone top)
-      // r=0: y = cy - 7*sq  (outermost)
-      // grid 1 row r: y = cy + (7-r)*sq
+      // Grid rows 0..5. Row 0=outermost, row 5=innermost (shared).
+      // For grid 0 (above centre): row r centre y = cy - (6-r)*sq
+      //   row 5: cy - 1*sq  (innermost, just above end zone)
+      //   row 0: cy - 6*sq  (outermost)
+      // For grid 1 (below centre): row r centre y = cy + (6-r)*sq
+      // The shared node (2,5) of grid 0 = (0,5) of grid 1 sits at cy ± 1*sq
+      // but those are different positions — for n=2 these are separate squares
+      // at the boundary of the end zone.
 
       this.gridFor = (g, col, row) => {
         const ySign = g===0 ? -1 : 1;
+        // Grid 1 is x-mirrored: col 0 → right, col 2 → left
+        const xSign = g===0 ? 1 : -1;
         return {
-          x: cx + (col-1)*sq,
-          y: cy + ySign*(7-row)*sq
+          x: cx + xSign*(col-1)*sq,
+          y: cy + ySign*(6-row)*sq
         };
       };
 
-      // Build all nodes
+      // Build all nodes (6 rows, 0..5)
       this.nodes={};
       for (let g=0;g<2;g++) {
         for (let col=0;col<3;col++) {
-          for (let row=0;row<7;row++) {
+          for (let row=0;row<6;row++) {
             const rawId=`g${g}_c${col}_r${row}`;
             const cid=canonicalId(rawId,2);
             if (!this.nodes[cid]) {
-              // Use whichever grid owns this canonical id
               const cm=cid.match(/^g(\d+)_c(\d+)_r(\d+)$/);
               const [cg,cc,cr]=[parseInt(cm[1]),parseInt(cm[2]),parseInt(cm[3])];
               const pos=this.gridFor(cg,cc,cr);
@@ -196,49 +188,40 @@ function buildBoard2(k, colours) {
       }
       this.nodes['end']={id:'end',x:cx,y:cy};
 
-      // Grids for arc computation
-      // For n=2, grids are axis-aligned:
-      // grid 0: sideDir=(1,0), outDir=(0,-1), mid=(cx,cy-1.5*sq) [but we computed differently above]
-      // Let's define grid objects matching the n≥3 convention:
+      // Grid frames for arc corner computation.
+      // mid = midpoint of innermost row face = cy ± 0.5*sq from end-zone edge
+      // With row 5 centre at cy ± 1*sq, the inner face is at cy ± 0.5*sq.
       this.grids=[
-        { mid:{x:cx,y:cy-1.5*sq}, sideDir:{x:1,y:0}, outDir:{x:0,y:-1} },
-        { mid:{x:cx,y:cy+1.5*sq}, sideDir:{x:-1,y:0}, outDir:{x:0,y:1} },
+        { mid:{x:cx,y:cy-0.5*sq}, sideDir:{x:1,y:0},  outDir:{x:0,y:-1} },
+        { mid:{x:cx,y:cy+0.5*sq}, sideDir:{x:-1,y:0}, outDir:{x:0,y:1}  },
       ];
-      // Outer corners of each grid: outerCorner(grid, col, sq)
-      // grid 0 col=0: cx-sq, cy-1.5*sq-6*sq = cx-sq, cy-7.5*sq  → outerLeft0
-      // grid 0 col=2: cx+sq, cy-7.5*sq                            → outerRight0
-      // grid 1 col=0: cx+sq, cy+7.5*sq  (sideDir=-1 so col0 is right in screen space)
-      // grid 1 col=2: cx-sq, cy+7.5*sq
 
-      // Arc home areas:
-      // Home 0 (P0): arc from grid0(0,0) to grid1(2,0), centre = (cx, cy)
-      // Home 1 (P1): arc from grid1(0,0) to grid0(2,0), centre = (cx, cy)
-      // We draw each as an arc sector from angle A to angle B around (cx,cy).
+      // True outer corner points.
+      // Grid 0 (sideDir=+x): col 0 = top-left, col 2 = top-right
+      // Grid 1 (sideDir=-x): col 0 = bottom-right, col 2 = bottom-left
+      const g0L = outerCornerPt(this.grids[0], 0, sq); // top-left
+      const g0R = outerCornerPt(this.grids[0], 2, sq); // top-right
+      const g1R = outerCornerPt(this.grids[1], 0, sq); // bottom-right (col0 of mirrored grid)
+      const g1L = outerCornerPt(this.grids[1], 2, sq); // bottom-left  (col2 of mirrored grid)
 
-      const g0L = outerCorner(this.grids[0], 0, sq); // grid0 left outer = top-left
-      const g0R = outerCorner(this.grids[0], 2, sq); // grid0 right outer = top-right
-      const g1L = outerCorner(this.grids[1], 0, sq); // grid1 "left" = bottom-right (sideDir=-1)
-      const g1R = outerCorner(this.grids[1], 2, sq); // grid1 "right" = bottom-left
+      const arcR = v2.len(v2.sub(g0R, {x:cx,y:cy}));
+      this.arcR = arcR;
 
-      // The radius for the arc = distance from cx,cy to any true outer corner
-      const arcR = v2.len(v2.sub(outerCornerPt(this.grids[0],0,sq),{x:cx,y:cy}));
-      this.arcR=arcR;
-
-      // Home 0: arc from g0L to g1R going through the left side (CCW or CW?)
-      // g0L is top-left, g1R is bottom-left → arc sweeps the left side
-      // Home 1: arc from g0R to g1L going through the right side
-      const a0L=v2.angle(v2.sub(g0L,{x:cx,y:cy})); // ~top-left angle
-      const a0R=v2.angle(v2.sub(g0R,{x:cx,y:cy})); // ~top-right
-      const a1L=v2.angle(v2.sub(g1L,{x:cx,y:cy})); // ~bottom-right
-      const a1R=v2.angle(v2.sub(g1R,{x:cx,y:cy})); // ~bottom-left
-
-      this.homes=[
-        // P0 home: left sector, from g1R to g0L (going CCW = left arc)
-        { player:0, cx, cy, r:arcR, a1:a1R, a2:a0L,
-          midX:cx-arcR*0.65, midY:cy },
-        // P1 home: right sector, from g0R to g1L (going CW = right arc)
-        { player:1, cx, cy, r:arcR, a1:a0R, a2:a1L,
-          midX:cx+arcR*0.65, midY:cy },
+      // Red (P0): top-right → bottom-right, sweeping CW (left bulge)
+      // Blue (P1): top-left → bottom-left, sweeping CCW (right bulge)
+      this.homes = [
+        { player:0,
+          ptA: g0R, ptB: g1R,
+          aStart: v2.angle(v2.sub(g0R, {x:cx,y:cy})),
+          aEnd:   v2.angle(v2.sub(g1R, {x:cx,y:cy})),
+          ccw: false,
+          midX: cx + arcR*0.6, midY: cy },
+        { player:1,
+          ptA: g0L, ptB: g1L,
+          aStart: v2.angle(v2.sub(g0L, {x:cx,y:cy})),
+          aEnd:   v2.angle(v2.sub(g1L, {x:cx,y:cy})),
+          ccw: true,
+          midX: cx - arcR*0.6, midY: cy },
       ];
     }
   };
@@ -281,31 +264,15 @@ function buildBoardN(n, k, colours) {
         return {mid,sideDir,outDir,vA,vB};
       });
 
-      // All grid nodes — junction nodes (c2_r6) get averaged position between adjacent grids
+      // All grid nodes — independent 3×6 grids, no shared nodes.
       this.nodes={};
-      this.junctionFrames={}; // canonical id → {sideDir, outDir} averaged between two grids
       for (let g=0;g<n;g++) {
         const grid=this.grids[g];
         for (let col=0;col<3;col++) {
-          for (let row=0;row<7;row++) {
+          for (let row=0;row<6;row++) {
             const id=`g${g}_c${col}_r${row}`;
-            const cid=canonicalId(id,n);
-            if(col===2&&row===6){
-              // Junction node: average position of this grid's (2,6) and next grid's (0,6)
-              const gNext=this.grids[(g+1)%n];
-              const posI=cellCentre(grid,2,6,sq);
-              const posJ=cellCentre(gNext,0,6,sq);
-              const avgPos=v2.lerp(posI,posJ,0.5);
-              // Averaged frame: sideDir and outDir averaged between the two grids
-              const avgSide=v2.norm(v2.add(grid.sideDir,gNext.sideDir));
-              const avgOut=v2.norm(v2.add(grid.outDir,gNext.outDir));
-              if(!this.nodes[cid]){
-                this.nodes[cid]={id:cid,x:avgPos.x,y:avgPos.y};
-                this.junctionFrames[cid]={sideDir:avgSide,outDir:avgOut};
-              }
-            } else {
-              if(!this.nodes[id]) this.nodes[id]={id,x:cellCentre(grid,col,row,sq).x,y:cellCentre(grid,col,row,sq).y};
-            }
+            const pos=cellCentre(grid,col,row,sq);
+            this.nodes[id]={id,x:pos.x,y:pos.y};
           }
         }
       }
@@ -404,16 +371,14 @@ function renderGrid(ctx, board, g, sq, colours) {
   const grid=useRotated?board.grids[g]:null;
 
   for (let c=0;c<3;c++) {
-    for (let r=0;r<7;r++) {
+    for (let r=0;r<6;r++) {
       const id=`g${g}_c${c}_r${r}`;
       const cid=canonicalId(id,board.n);
       const nd=board.nodes[cid]??board.nodes[id];
       if (!nd) continue;
       let fill='#1e2438';
-      if (c===1&&r>=1) fill=colAlpha(col,0.22);
-      else if (r===0)  fill=colAlpha(col,0.10);
-      // Junction node drawn separately at end (on top)
-      if(useRotated&&c===2&&r===6) continue;
+      if (c===1&&r>=1) fill=colAlpha(col,0.22);  // home stretch col
+      else if (r===0)  fill=colAlpha(col,0.10);  // back row
       if(useRotated){
         drawCell(ctx,nd.x,nd.y,sq,grid.sideDir,grid.outDir,fill);
       } else {
@@ -423,22 +388,9 @@ function renderGrid(ctx, board, g, sq, colours) {
   }
 }
 
-// Draw junction nodes on top of all grids with averaged frame
-function renderJunctions(ctx, board, sq, colours) {
-  if(board.n<3) return;
-  const {n,grids,nodes,junctionFrames}=board;
-  for(let g=0;g<n;g++){
-    const cid=`g${g}_c2_r6`;
-    const nd=nodes[cid]; if(!nd) continue;
-    const jf=junctionFrames[cid]; if(!jf) continue;
-    // Colour: blend of g and (g+1)%n — use g's colour, slightly lighter stroke
-    const col=colours[g%colours.length];
-    drawCell(ctx,nd.x,nd.y,sq,jf.sideDir,jf.outDir,'#2a3560',col+'99',1.2);
-  }
-}
-
 // ── n=1 ─────────────────────────────────────────────────────────────────────
 function renderBoard1(ctx,board,gs,W,H) {
+  // Static only: background, base circle, lane squares
   const col=board.colours[0],sq=board.sq,b=board.basePos;
   ctx.save();
   ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
@@ -453,89 +405,56 @@ function renderBoard1(ctx,board,gs,W,H) {
       ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('★',nd.x,nd.y);ctx.restore();
     } else drawSq(ctx,nd.x,nd.y,sq,'#1e2438');
   });
-  const fr=sq*0.36;
-  if(gs){
-    gs.pieces.forEach(p=>{
-      if(p.finished)return;
-      let px,py;
-      if(p.pathIndex<0){px=b.x+(p.kiteSlot-(board.k-1)/2)*fr*2.2;py=b.y;}
-      else{const nd=board.laneNodes[p.pathIndex];if(!nd)return;px=nd.x;py=nd.y;}
-      drawHighlight(ctx,px,py,fr,col,gs.validMoves.has(p.id),gs.selected===p.id);
-      drawPawn(ctx,px,py,fr,col,p.figureNum+1);
-    });
-  } else {
-    for(let f=0;f<board.k;f++) drawPawn(ctx,b.x+(f-(board.k-1)/2)*fr*2.2,b.y,fr,col,f+1);
-  }
 }
 
 // ── n=2 ─────────────────────────────────────────────────────────────────────
 function renderBoard2(ctx,board,gs,W,H) {
-  const {colours,sq,cx,cy,homes,nodes,grids}=board;
+  const {colours,sq,cx,cy,homes,nodes,grids,arcR}=board;
 
-  // Home areas: circular segments attaching to grid outer corners only.
-  // Use true corner points (outerCornerPt) so arcs connect to grid edges precisely.
-  const g0L=outerCornerPt(grids[0],0,sq); // top-left
-  const g0R=outerCornerPt(grids[0],2,sq); // top-right
-  const g1L=outerCornerPt(grids[1],0,sq); // bottom-right (grid1 sideDir reversed)
-  const g1R=outerCornerPt(grids[1],2,sq); // bottom-left
-
-  const arcR=board.arcR;
-  const a0L=v2.angle(v2.sub(g0L,{x:cx,y:cy}));
-  const a0R=v2.angle(v2.sub(g0R,{x:cx,y:cy}));
-  const a1L=v2.angle(v2.sub(g1L,{x:cx,y:cy}));
-  const a1R=v2.angle(v2.sub(g1R,{x:cx,y:cy}));
-
-  // Home 0 (left): arc counterclockwise from g1R (bottom-left) to g0L (top-left)
-  // Home 1 (right): arc clockwise from g0R (top-right) to g1L (bottom-right)
-  [
-    {ptA:g1R, ptB:g0L, aStart:a1R, aEnd:a0L, ccw:true,  player:0},
-    {ptA:g0R, ptB:g1L, aStart:a0R, aEnd:a1L, ccw:false, player:1},
-  ].forEach(({ptA,ptB,aStart,aEnd,ccw,player})=>{
-    const col=colours[player];
+  // Home areas: circular segments on left and right of the grids
+  homes.forEach(h=>{
+    const col=colours[h.player];
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(ptA.x,ptA.y);
-    ctx.arc(cx,cy,arcR,aStart,aEnd,ccw);
+    ctx.moveTo(h.ptA.x,h.ptA.y);
+    ctx.arc(cx,cy,arcR,h.aStart,h.aEnd,h.ccw);
     ctx.closePath();
     ctx.fillStyle=colAlpha(col,0.30);ctx.fill();
     ctx.strokeStyle=colAlpha(col,0.7);ctx.lineWidth=1.5;ctx.stroke();
     ctx.restore();
   });
 
-  // End zone (3×3 centre)
-  for(let c=0;c<3;c++) for(let r=0;r<3;r++) {
-    const fill=c===1?colAlpha('#e8d88a',0.15):'#1a2035';
-    drawSq(ctx,cx+(c-1)*sq,cy+(r-1)*sq,sq,fill);
-  }
-  ctx.save();ctx.font=`${sq*0.85}px serif`;ctx.fillStyle='#e8d88a';
+  // End zone — single star at centre, no grid cells needed
+  ctx.save();ctx.font=`${sq*1.2}px serif`;ctx.fillStyle='#e8d88a';
   ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('★',cx,cy);ctx.restore();
 
   // Grids
   for(let g=0;g<2;g++) renderGrid(ctx,board,g,sq,colours);
 
-  if(gs){
-    renderFigures(ctx,board,gs);
-    renderCentralCounts2(ctx,board,gs);
-    renderGameOver(ctx,board,gs,W,H);
-  } else {
-    homes.forEach(h=>renderBasePawns(ctx,h.midX,h.midY,board.k,colours[h.player],sq));
-  }
+  // Note: figures drawn in renderDynamic only
 }
 
 function renderCentralCounts2(ctx,board,gs) {
   const {colours,cx,cy,sq}=board;
-  const counts=Array(board.n).fill(0);
+  gs.pieces.forEach((p,_,arr)=>{
+    if(!p.finished) return;
+  });
+  // Count per player
+  const counts=[0,0];
   gs.pieces.forEach(p=>{if(p.finished)counts[p.player]++;});
-  const lh=Math.max(10,sq*0.6);
-  counts.forEach((c,i)=>{
-    if(!c)return;
-    const col=colours[i],tc=textFor(col);
+  // P0 count appears above the star (in upper grid's home stretch area)
+  // P1 count appears below the star
+  [[0, cy - sq*1.5],[1, cy + sq*1.5]].forEach(([player, y])=>{
+    const c=counts[player];
+    if(!c) return;
+    const col=colours[player];
     ctx.save();
+    ctx.font=`bold ${Math.max(11,sq*0.7)}px system-ui`;
     ctx.fillStyle=col;
-    ctx.beginPath();ctx.roundRect(cx-sq*0.9,cy+sq*(1.5+i*0.75),sq*1.8,lh*0.85,3);ctx.fill();
-    ctx.font=`bold ${Math.max(8,lh*0.7)}px system-ui`;
-    ctx.fillStyle=tc;ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.fillText(`×${c}`,cx,cy+sq*(1.5+i*0.75)+lh*0.4);ctx.restore();
+    ctx.textAlign='center';
+    ctx.textBaseline='middle';
+    ctx.fillText(`×${c}`,cx,y);
+    ctx.restore();
   });
 }
 
@@ -572,8 +491,6 @@ function renderBoardN(ctx,board,gs,W,H) {
 
   // Grid cells — rendered after kites so they sit on top
   for(let g=0;g<n;g++) renderGrid(ctx,board,g,sq,colours);
-  // Junction nodes on top of all grids with averaged angle
-  renderJunctions(ctx,board,sq,colours);
 
   // Inner n-gon
   ctx.save();
@@ -593,14 +510,6 @@ function renderBoardN(ctx,board,gs,W,H) {
     ctx.closePath();
     ctx.fillStyle=colAlpha(col,0.38);ctx.fill();
     ctx.strokeStyle=colAlpha(col,0.6);ctx.lineWidth=1;ctx.stroke();
-    if(gs){
-      const count=gs.pieces.filter(p=>p.player===i&&p.finished).length;
-      if(count>0){
-        ctx.font=`bold ${Math.max(9,sq*0.6)}px system-ui`;
-        ctx.fillStyle=textFor(col);ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.fillText(`×${count}`,tri.lx,tri.ly);
-      }
-    }
     ctx.restore();
   });
 
@@ -608,12 +517,7 @@ function renderBoardN(ctx,board,gs,W,H) {
   ctx.save();ctx.font=`${Math.max(10,sq*0.85)}px serif`;ctx.fillStyle='#e8d88a';
   ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('★',cx,cy);ctx.restore();
 
-  if(gs){
-    renderFigures(ctx,board,gs);
-    renderGameOver(ctx,board,gs,W,H);
-  } else {
-    kites.forEach((kit,i)=>renderBasePawns(ctx,kit.cx,kit.cy,board.k,colours[i%colours.length],sq));
-  }
+  // Note: figures drawn in renderDynamic only
 }
 
 // ── Shared figure rendering ──────────────────────────────────────────────────
@@ -622,50 +526,38 @@ function renderFigures(ctx,board,gs) {
   const sq=board.sq, fr=Math.max(5,sq*0.35);
 
   // Build blockade map: cid → count of pieces per player at that node
-  const nodeOccupancy={}; // cid → {playerIdx: count}
+  const nodeOccupancy={};
   gs.pieces.forEach(piece=>{
-    if(piece.finished||piece.pathIndex<0)return;
-    if(n===1)return;
-    const rawId=paths[piece.player][piece.pathIndex];
-    if(rawId==='end')return;
-    const cid=canonicalId(rawId,n);
-    if(!nodeOccupancy[cid])nodeOccupancy[cid]={};
-    nodeOccupancy[cid][piece.player]=(nodeOccupancy[cid][piece.player]||0)+1;
+    if(piece.finished||piece.pathIndex<0) return;
+    if(n===1) return;
+    const nodeId=paths[piece.player][piece.pathIndex];
+    if(!nodeId||nodeId==='end') return;
+    if(!nodeOccupancy[nodeId]) nodeOccupancy[nodeId]={};
+    nodeOccupancy[nodeId][piece.player]=(nodeOccupancy[nodeId][piece.player]||0)+1;
   });
 
   gs.pieces.forEach(piece=>{
-    if(piece.finished)return;
+    if(piece.finished||piece.pathIndex<0)return; // home + finished drawn elsewhere
     const col=colours[piece.player%colours.length];
     const isV=gs.validMoves.has(piece.id), isSel=gs.selected===piece.id;
     let px,py;
-    if(piece.pathIndex<0){
-      let hx,hy;
-      if(n>=3){const kit=kites[piece.player];hx=kit.cx;hy=kit.cy;}
-      else{const h=homes[piece.player];hx=h.midX;hy=h.midY;}
-      const cols=Math.ceil(Math.sqrt(k)),sp=fr*2.4;
-      px=hx+(piece.kiteSlot%cols-(cols-1)/2)*sp;
-      py=hy+(Math.floor(piece.kiteSlot/cols)-(Math.ceil(k/cols)-1)/2)*sp;
-    } else {
-      if(n===1){const nd=board.laneNodes?.[piece.pathIndex];if(!nd)return;px=nd.x;py=nd.y;}
-      else {
-        const rawId=paths[piece.player][piece.pathIndex];
-        if(rawId==='end'){px=board.cx;py=board.cy;}
-        else{
-          const cid=canonicalId(rawId,n);
-          const nd=nodes[cid]??nodes[rawId];
-          if(!nd)return;px=nd.x;py=nd.y;
-        }
+    if(n===1){const nd=board.laneNodes?.[piece.pathIndex];if(!nd)return;px=nd.x;py=nd.y;}
+    else {
+      const rawId=paths[piece.player][piece.pathIndex];
+      if(rawId==='end'){px=board.cx;py=board.cy;}
+      else{
+        const nd=nodes[rawId];
+        if(!nd)return;px=nd.x;py=nd.y;
       }
     }
 
     // Check if this piece is part of an active blockade
     let isBlockade=false;
     if(gs.rules&&gs.rules.blockading&&piece.pathIndex>=0&&n>1){
-      const rawId=paths[piece.player][piece.pathIndex];
-      if(rawId!=='end'){
-        const cid=canonicalId(rawId,n);
-        const occ=nodeOccupancy[cid]||{};
-        if((occ[piece.player]||0)>=2)isBlockade=true;
+      const nodeId=paths[piece.player][piece.pathIndex];
+      if(nodeId&&nodeId!=='end'){
+        const occ=nodeOccupancy[nodeId]||{};
+        if((occ[piece.player]||0)>=2) isBlockade=true;
       }
     }
 
@@ -707,13 +599,103 @@ function drawHighlight(ctx,x,y,r,col,isV,isSel) {
   if(isSel){ctx.save();ctx.beginPath();ctx.arc(x,y,r*2.4,0,Math.PI*2);ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();ctx.restore();}
 }
 function renderBasePawns(ctx,cx,cy,k,col,sq) {
+  if(k>=10){
+    // Show ×k badge instead of individual pawns
+    const fr=Math.max(12,sq*0.7);
+    ctx.save();
+    ctx.beginPath();ctx.arc(cx,cy,fr,0,Math.PI*2);
+    ctx.fillStyle=col;ctx.fill();
+    ctx.strokeStyle='#00000055';ctx.lineWidth=1;ctx.stroke();
+    ctx.font=`bold ${Math.max(8,fr*0.65)}px system-ui`;
+    ctx.fillStyle=textFor(col);ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(`×${k}`,cx,cy);
+    ctx.restore();
+    return;
+  }
   const fr=Math.max(5,sq*0.35),cols=Math.ceil(Math.sqrt(k)),sp=fr*2.4;
   for(let f=0;f<k;f++) drawPawn(ctx,cx+(f%cols-(cols-1)/2)*sp,cy+(Math.floor(f/cols)-(Math.ceil(k/cols)-1)/2)*sp,fr,col,f+1);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 3-D DIE  (rolls flat on board, no height lift in rendering)
-// ─────────────────────────────────────────────────────────────────────────────
+// Dynamic-only render: figures + game-over overlay drawn on top of cached board bitmap
+// Compute display position of a piece — used by both renderDynamic and _piecePos
+function pieceDisplayPos(piece, board, fr) {
+  const {n, k, kites, homes, nodes, paths} = board;
+  if (piece.pathIndex < 0) {
+    // In home base — grid layout matching renderBasePawns
+    let hx, hy;
+    if      (n >= 3) { const kit=kites[piece.player]; hx=kit.cx; hy=kit.cy; }
+    else if (n === 2) { const h=homes[piece.player];  hx=h.midX; hy=h.midY; }
+    else              { hx=board.basePos.x; hy=board.basePos.y; }
+    const cols=Math.ceil(Math.sqrt(k)), sp=fr*2.4;
+    return {
+      x: hx + (piece.kiteSlot%cols - (cols-1)/2) * sp,
+      y: hy + (Math.floor(piece.kiteSlot/cols) - (Math.ceil(k/cols)-1)/2) * sp,
+    };
+  }
+  if (n === 1) {
+    const nd = board.laneNodes?.[piece.pathIndex];
+    return nd ? {x:nd.x, y:nd.y} : {x:0,y:0};
+  }
+  const rawId = paths[piece.player][piece.pathIndex];
+  if (rawId === 'end') return {x:board.cx, y:board.cy};
+  const nd = nodes[rawId];
+  return nd ? {x:nd.x, y:nd.y} : {x:0,y:0};
+}
+
+function renderDynamic(ctx, board, gs, W, H) {
+  const {n, k, colours} = board;
+  const sq = board.sq;
+  const fr = Math.max(5, sq*0.35);
+
+  if (!gs) {
+    // Preview: draw all k pawns in each home area (no highlights)
+    if (n === 1) {
+      const col=colours[0], b=board.basePos;
+      for (let f=0;f<k;f++) {
+        const cols=Math.ceil(Math.sqrt(k)), sp=fr*2.4;
+        const px=b.x+(f%cols-(cols-1)/2)*sp;
+        const py=b.y+(Math.floor(f/cols)-(Math.ceil(k/cols)-1)/2)*sp;
+        drawPawn(ctx,px,py,fr,col,f+1);
+      }
+    } else if (n === 2) {
+      board.homes.forEach(h => renderBasePawns(ctx,h.midX,h.midY,k,colours[h.player],sq));
+    } else {
+      board.kites.forEach((kit,i) => renderBasePawns(ctx,kit.cx,kit.cy,k,colours[i%colours.length],sq));
+    }
+    return;
+  }
+
+  // In-game: draw every non-finished piece with correct highlight
+  gs.pieces.forEach(piece => {
+    if (piece.finished) return;
+    const col = colours[piece.player % colours.length];
+    const isV = gs.validMoves.has(piece.id);
+    const isSel = gs.selected === piece.id;
+    const {x, y} = pieceDisplayPos(piece, board, fr);
+    drawHighlight(ctx, x, y, fr, col, isV, isSel);
+    drawPawn(ctx, x, y, fr, col, piece.figureNum+1);
+  });
+
+  if (n === 2) renderCentralCounts2(ctx, board, gs);
+
+  // n≥3: draw ×count in each central triangle
+  if (n >= 3 && board.centralTris) {
+    board.centralTris.forEach((tri, i) => {
+      const count = gs.pieces.filter(p => p.player===i && p.finished).length;
+      if (!count) return;
+      const col = colours[i % colours.length];
+      ctx.save();
+      ctx.font = `bold ${Math.max(9, board.sq*0.6)}px system-ui`;
+      ctx.fillStyle = textFor(col);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(`×${count}`, tri.lx, tri.ly);
+      ctx.restore();
+    });
+  }
+
+  renderGameOver(ctx, board, gs, W, H);
+}
 const _G=0.09,_VR=0.6,_FF=0.90,_WF=0.70,_BR=0.38,_BF=0.994,_DT=0.12,_DM=0.72,_SF=28;
 function _mm(a,b){return[a[0]*b[0]+a[1]*b[3]+a[2]*b[6],a[0]*b[1]+a[1]*b[4]+a[2]*b[7],a[0]*b[2]+a[1]*b[5]+a[2]*b[8],a[3]*b[0]+a[4]*b[3]+a[5]*b[6],a[3]*b[1]+a[4]*b[4]+a[5]*b[7],a[3]*b[2]+a[4]*b[5]+a[5]*b[8],a[6]*b[0]+a[7]*b[3]+a[8]*b[6],a[6]*b[1]+a[7]*b[4]+a[8]*b[7],a[6]*b[2]+a[7]*b[5]+a[8]*b[8]];}
 function _mv(m,v){return[m[0]*v[0]+m[1]*v[1]+m[2]*v[2],m[3]*v[0]+m[4]*v[1]+m[5]*v[2],m[6]*v[0]+m[7]*v[1]+m[8]*v[2]];}
@@ -832,7 +814,9 @@ class LudoGame {
     this._die=null;
     this._sixStreak=Array(this.n).fill(0);
     this._transitioning=false;
+    this._winRendered=false;
     if(this._skipTimeout){clearTimeout(this._skipTimeout);this._skipTimeout=null;}
+    this._boardCache=null; // invalidate cached board bitmap
 
     this.board=buildBoard(this.n,this.k,this.colours);
     this.board.layout(this.canvas.width,this.canvas.height);
@@ -843,7 +827,16 @@ class LudoGame {
         this.pieces.push({id:`${p}_${f}`,player:p,figureNum:f,kiteSlot:f,pathIndex:-1,finished:false});
 
     this._updateHUD();
-    this._startLoop();
+    this._buildBoardCache().then(()=>this._startLoop());
+  }
+
+  async _buildBoardCache(){
+    const W=this.canvas.width, H=this.canvas.height;
+    const off=new OffscreenCanvas(W,H);
+    const ctx=off.getContext('2d');
+    // Render static board (no game state, no figures)
+    renderBoard(ctx,this.board,null,W,H);
+    this._boardCache=await createImageBitmap(off);
   }
 
   destroy(){
@@ -865,6 +858,7 @@ class LudoGame {
         if(this._die.done) this._updateHUD(`Rolled ${this._die.outcome} — tap to confirm`);
       }
       this._render();
+      if(this.phase==='gameover') this._winRendered=true;
       this._raf=requestAnimationFrame(tick);
     };
     this._raf=requestAnimationFrame(tick);
@@ -957,47 +951,85 @@ class LudoGame {
     }
   }
 
-  // Returns true if placing movingPiece at targetIdx would be blocked.
-  // For n=1: use pathIndex directly (no canonical id needed).
-  _blockedAt(movingPiece,targetIdx){
+  // ── Blockade helpers ──────────────────────────────────────────────────────
+
+  // Max pieces allowed on one square for this player (blockade stacking cap)
+  _stackCap(){ return this.rules.blockading ? 2 : 1; }
+
+  // Count of player's own pieces on a node id (excluding the moving piece)
+  _ownOnNode(movingPiece, nodeId){
+    return this._playerPieces(movingPiece.player)
+      .filter(p=>p.id!==movingPiece.id&&!p.finished&&this._pieceNodeId(p)===nodeId).length;
+  }
+
+  // Count of ALL pieces (any player) on a node id
+  _allOnNode(nodeId){
+    return this.pieces.filter(p=>!p.finished&&p.pathIndex>=0&&this._pieceNodeId(p)===nodeId).length;
+  }
+
+  // Count of opponent pieces on a node id
+  _oppOnNode(playerIdx, nodeId){
+    return this.pieces
+      .filter(p=>p.player!==playerIdx&&!p.finished&&this._pieceNodeId(p)===nodeId).length;
+  }
+
+  // A node is a blockade against playerIdx if opponents have >= stackCap pieces there
+  _isBlockade(playerIdx, nodeId){
+    if(!nodeId||nodeId==='end') return false;
+    return this._oppOnNode(playerIdx, nodeId) >= this._stackCap();
+  }
+
+  // Can movingPiece land on targetId?
+  _canLandOn(movingPiece, targetId){
+    if(!targetId||targetId==='end') return true;
+    // Own stack cap: can't exceed stackCap pieces of own colour
+    const own = this._ownOnNode(movingPiece, targetId);
+    if(own >= this._stackCap()) return false;
+    // Can't land on opponent blockade
+    if(this.rules.blockading && this._isBlockade(movingPiece.player, targetId)) return false;
+    // Without blockading: can't share square with any own piece
+    if(!this.rules.blockading && own > 0) return false;
+    return true;
+  }
+
+  _blockedAt(movingPiece, targetIdx){
+    const path = this.board.paths[movingPiece.player];
     if(this.n===1){
-      // Self-capture check for n=1
-      const ownThere=this._playerPieces(movingPiece.player)
-        .filter(p=>p.id!==movingPiece.id&&!p.finished&&p.pathIndex===targetIdx).length;
-      return ownThere>0;
+      // n=1: simple, no blockading geometry
+      const targetId = `lane_${targetIdx}`;
+      return !this._canLandOn(movingPiece, targetId);
     }
-    const path=this.board.paths[movingPiece.player];
-    if(targetIdx<0||targetIdx>=path.length)return false;
-    const cid=canonicalId(path[targetIdx],this.n);
-
-    // Self-capture always forbidden
-    const ownThere=this._playerPieces(movingPiece.player)
-      .filter(p=>p.id!==movingPiece.id&&!p.finished&&this._pieceNodeCid(p)===cid).length;
-    if(ownThere>0)return true;
-
-    // Blockade: opponents have ≥2 pieces on this node
+    if(targetIdx<0||targetIdx>=path.length) return false;
+    const targetId = path[targetIdx];
+    if(!this._canLandOn(movingPiece, targetId)) return true;
+    // Can't pass through opponent blockades
     if(this.rules.blockading){
-      const oppThere=this.pieces
-        .filter(p=>p.player!==movingPiece.player&&!p.finished)
-        .filter(p=>this._pieceNodeCid(p)===cid).length;
-      if(oppThere>=2)return true;
+      const startIdx = movingPiece.pathIndex<0 ? 0 : movingPiece.pathIndex+1;
+      for(let i=startIdx; i<targetIdx; i++){
+        if(this._isBlockade(movingPiece.player, path[i])) return true;
+      }
     }
     return false;
   }
 
-  // Canonical node id for a piece's current board position
-  _pieceNodeCid(piece){
-    if(piece.pathIndex<0||piece.finished)return null;
-    if(this.n===1)return `lane_${piece.pathIndex}`;
-    const path=this.board.paths[piece.player];
-    if(piece.pathIndex>=path.length)return null;
-    return canonicalId(path[piece.pathIndex],this.n);
+  _squareHasBlockade(playerIdx, nodeId){
+    return this._isBlockade(playerIdx, nodeId);
   }
+
+  _pieceNodeId(piece){
+    if(piece.pathIndex<0||piece.finished) return null;
+    if(this.n===1) return `lane_${piece.pathIndex}`;
+    const path=this.board.paths[piece.player];
+    if(piece.pathIndex>=path.length) return null;
+    return path[piece.pathIndex];
+  }
+
+  // Keep _pieceNodeCid as alias for compatibility
+  _pieceNodeCid(piece){ return this._pieceNodeId(piece); }
 
   _onClick(e){
     if(this._destroyed)return;
-    if(this.phase==='gameover'){this.reset();return;}
-    // Click during skip/forfeit timeout — cancel it and move on immediately
+    if(this.phase==='gameover'){if(this._winRendered)this.reset();return;}
     if(this._transitioning){
       clearTimeout(this._skipTimeout);
       this._nextTurn();
@@ -1007,6 +1039,11 @@ class LudoGame {
     if(this._die){
       if(!this._die.done)this._snapDie();
       else this._confirmDie();
+      return;
+    }
+    // Roll phase: clicking anywhere on the canvas rolls the die
+    if(this.phase==='roll'){
+      this.requestRoll();
       return;
     }
     if(this.phase!=='move')return;
@@ -1039,26 +1076,7 @@ class LudoGame {
   }
 
   _piecePos(piece,fr){
-    const{board,k,n}=this;
-    if(piece.pathIndex<0){
-      let hx,hy;
-      if(n>=3){const kit=board.kites[piece.player];hx=kit.cx;hy=kit.cy;}
-      else if(n===2){const h=board.homes[piece.player];hx=h.midX;hy=h.midY;}
-      else{hx=board.basePos.x;hy=board.basePos.y;}
-      const cols=Math.ceil(Math.sqrt(k)),sp=fr*2.4;
-      return{x:hx+(piece.kiteSlot%cols-(cols-1)/2)*sp,
-             y:hy+(Math.floor(piece.kiteSlot/cols)-(Math.ceil(k/cols)-1)/2)*sp};
-    }
-    if(n===1){
-      const idx=piece.pathIndex;
-      const nd=board.laneNodes?.[idx];
-      return nd?{x:nd.x,y:nd.y}:{x:0,y:0};
-    }
-    const rawId=board.paths[piece.player][piece.pathIndex];
-    if(rawId==='end')return{x:board.cx,y:board.cy};
-    const cid=canonicalId(rawId,n);
-    const nd=board.nodes[cid]??board.nodes[rawId];
-    return nd?{x:nd.x,y:nd.y}:{x:0,y:0};
+    return pieceDisplayPos(piece, this.board, fr);
   }
 
   _move(piece){
@@ -1071,15 +1089,11 @@ class LudoGame {
       const nodeId=path[piece.pathIndex];
       const isSafe=nodeId.startsWith(`g${piece.player}_c1_r`)||nodeId==='end';
       if(!isSafe){
-        const cid=canonicalId(nodeId,this.n);
-        // With blockading on, can only capture if landing square has exactly 1 opponent
-        // (≥2 means it's a blockade and we can't land there — already filtered in _blockedAt)
-        this.pieces.forEach(other=>{
-          if(other.player===piece.player||other.id===piece.id||other.finished)return;
-          const op=this.board.paths[other.player];
-          if(other.pathIndex<0||other.pathIndex>=op.length)return;
-          if(canonicalId(op[other.pathIndex],this.n)===cid)other.pathIndex=-1;
-        });
+        const oppsHere=this.pieces.filter(p=>
+          p.player!==piece.player&&!p.finished&&this._pieceNodeId(p)===nodeId
+        );
+        // Capture only if exactly 1 opponent (>=stackCap = blockade, can't land there anyway)
+        if(oppsHere.length===1) oppsHere[0].pathIndex=-1;
       }
     }
 
@@ -1088,6 +1102,7 @@ class LudoGame {
 
     if(this._playerPieces(piece.player).every(p=>p.finished)){
       this.winner=piece.player; this.phase='gameover';
+      this._winRendered=false; // prevent immediate click-through to reset
       this._updateHUD(`Player ${piece.player+1} wins!`); return;
     }
     if(this.diceValue===6){
@@ -1132,9 +1147,19 @@ class LudoGame {
   _render(){
     const ctx=this.canvas.getContext('2d');
     const W=this.canvas.width,H=this.canvas.height;
+
+    if(this._boardCache){
+      // Fast path: blit pre-rendered static board
+      ctx.drawImage(this._boardCache,0,0);
+    } else {
+      // Cache not ready yet — render fully
+      renderBoard(ctx,this.board,null,W,H);
+    }
+
+    // Dynamic layer: figures, highlights, die, overlays
     const gs={pieces:this.pieces,selected:this.selected,validMoves:this.validMoves,
                phase:this.phase,winner:this.winner,rules:this.rules};
-    renderBoard(ctx,this.board,gs,W,H);
+    renderDynamic(ctx,this.board,gs,W,H);
     if(this._die)drawDie(ctx,this._die);
     this._updateHUD();
   }
