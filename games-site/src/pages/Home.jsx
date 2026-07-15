@@ -258,6 +258,10 @@ export default function Home() {
             do so via the following github link: <br />
             https://github.com/protoozone/Proto-GHUB/tree/main/games-site
           </p>
+          <p>
+            Here's also a link to my ko-fi, donations are entirely optional, so <br />
+            only feel free to if you have the means and enjoy: https://ko-fi.com/protozone
+          </p>
           <br /><br />
           <div className="row">
             <div className="column"><GameCard to="/games/Big_Worm" name="Big Worm" artSrc="/assets/big_worm.png" /></div>
