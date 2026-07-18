@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Clock's Out</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d0f;
+  --surface:#15171c;
+  --surface2:#1c1f27;
+  --border:#2c2f3a;
+  --border-bright:#44475a;
+  --accent:#c0c8d8;
+  --accent-hot:#e8eaf0;
+  --text:#dde1ec;
+  --muted:#6b7080;
+  --p1:#5b9bd5;
+  --p2:#d55b5b;
+  --font:'Arial Narrow',Arial,sans-serif;
+  --mono:'Courier New',monospace;
+}
+html,body{height:100%}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--font);
+  min-height:100dvh;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  padding:1.5rem 1rem 2rem;
+  gap:1.25rem;
+  overflow-x:hidden;
+}
+body.in-game{
+  padding:0;
+  gap:0;
+  overflow:hidden;
+  height:100dvh;
+}
+
+/* ── Header ── */
+header{display:flex;flex-direction:column;align-items:center;gap:0.3rem}
+h1{
+  font-size:2.2rem;
+  font-weight:900;
+  color:var(--accent-hot);
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  font-family:var(--font);
+  text-shadow:0 0 24px rgba(192,200,216,0.18);
+}
+.sub{
+  font-size:0.68rem;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:0.18em;
+  font-family:var(--mono);
+}
+
+.chrome{display:flex;flex-direction:column;align-items:center;gap:1.25rem;width:100%;max-width:500px}
+body.in-game .chrome{display:none}
+
+/* ── Back button ── */
+.back-btn{
+  padding:0.32rem 0.85rem;
+  background:var(--surface);
+  border:1px solid var(--border);
+  color:var(--muted);
+  font-size:0.78rem;
+  font-family:var(--mono);
+  cursor:pointer;
+  text-decoration:none;
+  letter-spacing:0.05em;
+  transition:border-color .15s,color .15s;
+  align-self:flex-start;
+}
+.back-btn:hover{border-color:var(--border-bright);color:var(--text)}
+
+/* ── Divider ── */
+.divider{width:100%;height:1px;background:var(--border)}
+
+/* ── Config panel ── */
+.config-panel{
+  width:100%;
+  background:var(--surface);
+  border:1px solid var(--border);
+  padding:1.2rem 1.4rem;
+  display:flex;
+  flex-direction:column;
+  gap:1rem;
+}
+.config-title{
+  font-size:0.65rem;
+  text-transform:uppercase;
+  letter-spacing:0.15em;
+  color:var(--muted);
+  font-family:var(--mono);
+}
+.config-rows{display:flex;flex-direction:column;gap:0.75rem}
+.config-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:1rem;
+}
+.config-label{
+  font-size:0.88rem;
+  color:var(--text);
+  font-family:var(--font);
+  letter-spacing:0.04em;
+}
+.config-hint{
+  font-size:0.65rem;
+  color:var(--muted);
+  font-family:var(--mono);
+  margin-top:1px;
+}
+.config-right{display:flex;align-items:center;gap:0.5rem}
+.stepper-btn{
+  width:28px;height:28px;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  color:var(--accent);
+  font-size:1rem;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--mono);
+  transition:border-color .12s,background .12s;
+  flex-shrink:0;
+}
+.stepper-btn:hover{border-color:var(--border-bright);background:#22252f}
+.stepper-val{
+  width:48px;
+  text-align:center;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  color:var(--accent-hot);
+  font-size:0.95rem;
+  font-family:var(--mono);
+  padding:3px 0;
+  font-weight:700;
+  letter-spacing:0.05em;
+}
+
+/* ── Match format ── */
+.format-row{
+  display:flex;
+  gap:0.4rem;
+  width:100%;
+}
+.fmt-btn{
+  flex:1;
+  padding:0.45rem 0;
+  background:var(--surface2);
+  border:1px solid var(--border);
+  color:var(--muted);
+  font-size:0.78rem;
+  font-family:var(--mono);
+  cursor:pointer;
+  text-align:center;
+  letter-spacing:0.06em;
+  transition:border-color .12s,color .12s,background .12s;
+}
+.fmt-btn:hover{border-color:var(--border-bright);color:var(--text)}
+.fmt-btn.active{
+  background:rgba(192,200,216,0.08);
+  border-color:var(--accent);
+  color:var(--accent-hot);
+  font-weight:700;
+}
+
+/* ── Play button ── */
+.play-btn{
+  width:100%;
+  padding:0.75rem 0;
+  background:rgba(192,200,216,0.07);
+  border:1px solid var(--accent);
+  color:var(--accent-hot);
+  font-size:1rem;
+  font-family:var(--font);
+  font-weight:700;
+  letter-spacing:0.18em;
+  text-transform:uppercase;
+  cursor:pointer;
+  transition:background .15s,transform .1s;
+}
+.play-btn:hover{background:rgba(192,200,216,0.14);transform:translateY(-1px)}
+.play-btn:active{transform:translateY(0)}
+
+/* ── Controls reference ── */
+.controls-ref{
+  width:100%;
+  background:var(--surface);
+  border:1px solid var(--border);
+  padding:1rem 1.4rem;
+}
+.controls-title{
+  font-size:0.65rem;
+  text-transform:uppercase;
+  letter-spacing:0.15em;
+  color:var(--muted);
+  font-family:var(--mono);
+  margin-bottom:0.7rem;
+}
+.controls-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:0.35rem 1.5rem;
+}
+.ctrl-line{
+  display:flex;
+  align-items:baseline;
+  gap:0.4rem;
+  font-size:0.78rem;
+}
+.ctrl-key{
+  font-family:var(--mono);
+  color:var(--accent);
+  font-weight:700;
+  min-width:14px;
+}
+.ctrl-desc{color:var(--muted)}
+
+/* ── Game panel (full-screen) ── */
+#game-panel{
+  display:none;
+  flex-direction:column;
+  width:100%;
+  height:100%;
+}
+body.in-game #game-panel{display:flex}
+
+/* ── HUD ── */
+#hud{
+  width:100%;
+  background:var(--surface);
+  border-bottom:1px solid var(--border);
+  padding:6px 14px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  font-size:12px;
+  color:var(--text);
+  flex-shrink:0;
+  font-family:var(--mono);
+}
+
+
+.hud-btn{
+  background:var(--surface2);
+  color:var(--muted);
+  border:1px solid var(--border);
+  padding:3px 10px;
+  cursor:pointer;
+  font-size:10px;
+  font-family:var(--mono);
+  letter-spacing:0.06em;
+  transition:border-color .12s,color .12s;
+}
+.hud-btn:hover{border-color:var(--border-bright);color:var(--text)}
+
+/* ── Game canvas area ── */
+#game-canvas-wrap{
+  flex:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:var(--bg);
+  min-height:0;
+  width:100%;
+  overflow:hidden;
+}
+#game-canvas{
+  display:block;
+  cursor:default;
+  -webkit-tap-highlight-color:transparent;
+}
+
+@media(max-width:440px){
+  h1{font-size:1.7rem}
+  .controls-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="chrome">
+  <header>
+    <h1>CLOCK'S OUT</h1>
+  </header>
+
+  <button class="back-btn" onclick="returnToHub()">← Back To Hub</button>
+
+  <div class="divider"></div>
+
+  <!-- Config panel -->
+  <div class="config-panel">
+    <span class="config-title">Match Config</span>
+    <div class="config-rows">
+
+      <div class="config-row">
+        <div>
+          <div class="config-label">Queue Slots</div>
+          <div class="config-hint">Actions per round: default 3, min 1, max 20</div>
+        </div>
+        <div class="config-right">
+          <button class="stepper-btn" onclick="stepSlots(-1)">−</button>
+          <div class="stepper-val" id="slots-val">3</div>
+          <button class="stepper-btn" onclick="stepSlots(1)">+</button>
+        </div>
+      </div>
+
+      <div class="config-row">
+        <div>
+          <div class="config-label">Timer (seconds)</div>
+          <div class="config-hint">Time to fill queue: default 5s, min 0.2s, max 30s</div>
+        </div>
+        <div class="config-right">
+          <button class="stepper-btn" onclick="stepTimer(-1)">−</button>
+          <div class="stepper-val" id="timer-val">5.0</div>
+          <button class="stepper-btn" onclick="stepTimer(1)">+</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Match format -->
+  <div class="config-panel" style="gap:0.7rem">
+    <span class="config-title">Match Format</span>
+    <div class="format-row" id="fmt-row">
+      <button class="fmt-btn active" data-fmt="1">ONE OFF</button>
+      <button class="fmt-btn" data-fmt="3">BEST OF 3</button>
+      <button class="fmt-btn" data-fmt="5">BEST OF 5</button>
+    </div>
+  </div>
+
+  <!-- Play button -->
+  <button class="play-btn" onclick="launchGame()">▶ SELECT FIGHTERS</button>
+
+  <!-- Controls reference -->
+  <div class="controls-ref">
+    <div class="controls-title">Controls</div>
+    <div class="controls-grid">
+      <div class="ctrl-line"><span class="ctrl-key">1</span><span class="ctrl-desc">Jab: 1 dmg, 1 tile ahead</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">Num1</span><span class="ctrl-desc">Jab</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">2</span><span class="ctrl-desc">Move left</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">Num2</span><span class="ctrl-desc">Move left</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">3</span><span class="ctrl-desc">Move right</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">Num3</span><span class="ctrl-desc">Move right</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">4</span><span class="ctrl-desc">Block: reduces dmg by 1</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">Num4</span><span class="ctrl-desc">Block</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">5–9</span><span class="ctrl-desc">Character abilities</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">Num5–9</span><span class="ctrl-desc">Character abilities</span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Full-screen game panel ── -->
+<div id="game-panel">
+  <div id="hud">
+    <button class="hud-btn" onclick="resetGame()">↺ RESET</button>
+    <button class="hud-btn" onclick="exitGame()">✕ EXIT</button>
+  </div>
+  <div id="game-canvas-wrap">
+    <canvas id="game-canvas"></canvas>
+  </div>
+</div>
+
+<script>
+// ── Config state ──────────────────────────────────────────────────────────────
+let slots   = 3
+let timerS  = 5.0
+let matchFmt = 1
+
+const SLOT_MIN = 1, SLOT_MAX = 20
+const TIMER_MIN = 0.2, TIMER_MAX = 30
+const TIMER_STEPS = [0.2,0.5,1,1.5,2,3,4,5,6,7,8,10,12,15,20,25,30]
+
+function stepSlots(d) {
+  slots = Math.max(SLOT_MIN, Math.min(SLOT_MAX, slots + d))
+  document.getElementById('slots-val').textContent = slots
+}
+
+function stepTimer(d) {
+  const idx = TIMER_STEPS.findIndex(v => v >= timerS)
+  const next = Math.max(0, Math.min(TIMER_STEPS.length - 1, idx + d))
+  timerS = TIMER_STEPS[next]
+  document.getElementById('timer-val').textContent = timerS.toFixed(timerS < 1 ? 1 : 0) + (timerS >= 1 ? '.0' : '')
+}
+
+// Patch up display on load
+document.getElementById('timer-val').textContent = '5.0'
+
+// Format buttons
+document.getElementById('fmt-row').addEventListener('click', e => {
+  const btn = e.target.closest('.fmt-btn')
+  if (!btn) return
+  document.querySelectorAll('.fmt-btn').forEach(b => b.classList.remove('active'))
+  btn.classList.add('active')
+  matchFmt = +btn.dataset.fmt
+})
+
+// ── Back to hub ───────────────────────────────────────────────────────────────
+function returnToHub() {
+  if (window.parent !== window) {
+    window.parent.postMessage('returnToHub', '*')
+  } else {
+    alert("Running standalone. Visit the hub site to navigate back.")
+  }
+}
+
+// ── Launch / exit ─────────────────────────────────────────────────────────────
+let gameInst = null
+
+function launchGame() {
+  document.body.classList.add('in-game')
+  requestAnimationFrame(() => {
+    const canvas = document.getElementById('game-canvas')
+    const wrap   = document.getElementById('game-canvas-wrap')
+    const rect   = wrap.getBoundingClientRect()
+    const S      = Math.max(300, Math.min(rect.width, rect.height) - 16)
+    canvas.width = rect.width - 0
+    canvas.height = rect.height - 0
+
+    const hud = {}  // HP, timer, ult all rendered on canvas
+    gameInst?.destroy()
+    gameInst = new ClocksOutGame(canvas, hud, { slots, timerS, matchFmt })
+  })
+}
+
+function exitGame() {
+  gameInst?.destroy()
+  gameInst = null
+  document.body.classList.remove('in-game')
+}
+
+window.resetGame = () => gameInst?.reset()
+
+window.addEventListener('resize', () => {
+  if (!document.body.classList.contains('in-game')) return
+  const canvas = document.getElementById('game-canvas')
+  const wrap   = document.getElementById('game-canvas-wrap')
+  const rect   = wrap.getBoundingClientRect()
+  canvas.width  = rect.width
+  canvas.height = rect.height
+  gameInst?.resize(canvas.width, canvas.height)
+})
+</script>
+
+<script src="./game.js"></script>
+</body>
+</html>
