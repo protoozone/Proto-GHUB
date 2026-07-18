@@ -178,47 +178,51 @@ class Fighter {
 }
 
 // ── Layout helper ─────────────────────────────────────────────────────────────
-// Returns all zone rects given canvas W, H and slot count
+// Stack (top→bottom):
+//   P2 btn strip | space | P2 timer | P2 queue | arena | P1 queue | P1 timer | space | P1 btn strip
 function computeLayout(W, H, slots) {
-  const btnH    = Math.max(48, Math.min(H * 0.17, 76))
-  const btnW    = W / BTN_COUNT
-  const space   = Math.max(8, H * 0.025)
+  const btnH   = Math.max(48, Math.min(H * 0.17, 76))
+  const btnW   = W / BTN_COUNT
+  const space  = Math.max(6, H * 0.02)
+  const timerH = Math.max(14, H * 0.03)
+  const hudH   = Math.max(20, H * 0.045)
+  const pad    = 3  // gap between zones
 
-  // Queue slots
-  const slotSz  = Math.max(24, Math.min(
-    (W * 0.72) / slots - 6,
-    Math.min(H * 0.07, 44)
-  ))
+  const slotSz  = Math.max(20, Math.min((W * 0.72) / slots - 6, Math.min(H * 0.06, 40)))
   const slotGap = 5
   const queueW  = slots * (slotSz + slotGap) - slotGap
   const queueH  = slotSz
 
-  // HUD strip
-  const hudH    = Math.max(18, H * 0.04)
+  const tileW  = W / TILE_COUNT
 
-  // Total middle content: queue + hud + arena + hud + queue
-  const tileW   = W / TILE_COUNT
-  const arenaH  = Math.min(tileW * 1.1, (H - btnH * 2 - space * 2 - queueH * 2 - hudH * 2) * 0.95)
+  // Available height for the whole middle block
+  const midH = H - btnH * 2 - space * 2
+  // Middle block = timer + queue + hud + arena + hud + queue + timer
+  const fixedMid = (timerH + pad + queueH + pad + hudH + pad) * 2
+  const arenaH = Math.max(tileW * 0.7, Math.min(tileW * 1.1, midH - fixedMid))
 
-  const totalMid = queueH + hudH + arenaH + hudH + queueH
-  const midY     = btnH + space + (H - btnH * 2 - space * 2 - totalMid) / 2
+  // Total middle content height — centre it in the available mid zone
+  const totalMid = timerH + pad + queueH + pad + hudH + pad + arenaH + pad + hudH + pad + queueH + pad + timerH
+  const midStartY = btnH + space + Math.max(0, (midH - totalMid) / 2)
 
-  const p2QueueY = midY
-  const p2HudY   = p2QueueY + queueH + 4
-  const arenaY   = p2HudY + hudH + 4
-  const p1HudY   = arenaY + arenaH + 4
-  const p1QueueY = p1HudY + hudH + 4
+  // Build positions from top of middle block
+  let y = midStartY
+  const p2TimerY = y;  y += timerH + pad
+  const p2QueueY = y;  y += queueH + pad
+  const p2HudY   = y;  y += hudH   + pad
+  const arenaY   = y;  y += arenaH + pad
+  const p1HudY   = y;  y += hudH   + pad
+  const p1QueueY = y;  y += queueH + pad
+  const p1TimerY = y
 
   return {
     W, H,
-    btnH, btnW,
-    space,
+    btnH, btnW, space,
+    timerH, hudH, pad,
     slotSz, slotGap, queueW, queueH,
-    hudH,
-    arenaH, arenaY,
-    tileW,
-    p1QueueY, p2QueueY,
-    p1HudY,   p2HudY,
+    arenaH, arenaY, tileW,
+    p2TimerY, p2QueueY, p2HudY,
+    p1HudY,   p1QueueY, p1TimerY,
     queueStartX: (W - queueW) / 2,
   }
 }
@@ -529,23 +533,9 @@ class ClocksOutGame {
     if (fighter.queue.length > 0) { fighter.queue.pop(); fighter.locked = false }
   }
 
-  // ── HUD ─────────────────────────────────────────────────────────────────────
-  _updateHud() {
-    if (this.hud.p1hp)   this.hud.p1hp.textContent   = `${Math.max(0, this.p1.hp)}HP`
-    if (this.hud.p2hp)   this.hud.p2hp.textContent   = `${Math.max(0, this.p2.hp)}HP`
-    if (this.hud.status) {
-      const [w1, w2] = this.roundWins
-      this.hud.status.textContent = this.matchFmt > 1
-        ? `${w1} – ${w2}  (first to ${Math.ceil(this.matchFmt / 2)})`
-        : ''
-    }
-  }
-
-  _updateTimerDisplay() {
-    if (!this.hud.timer) return
-    this.hud.timer.textContent = (this.timeLeft / 1000).toFixed(1)
-    this.hud.timer.style.color = this.timeLeft < 2000 ? C.p2 : C.accentHot
-  }
+  // ── HUD — all drawn on canvas now, these are no-ops kept for call sites ──────
+  _updateHud() {}
+  _updateTimerDisplay() {}
 
   // ── Loop ────────────────────────────────────────────────────────────────────
   _loop(ts) {
@@ -558,7 +548,6 @@ class ClocksOutGame {
 
     if (this.phase === PHASE.INPUT) {
       this.timeLeft = Math.max(0, this.timeLeft - dt)
-      this._updateTimerDisplay()
       if (this.timeLeft <= 0) { this.p1.locked = true; this.p2.locked = true; this._beginResolve() }
     }
     if (this.phase === PHASE.RESOLVE) {
@@ -592,12 +581,14 @@ class ClocksOutGame {
     const L = computeLayout(W, H, this.slots)
     this._drawButtonStrip(L, this.p2, true)
     this._drawButtonStrip(L, this.p1, false)
+    this._drawTimer(L, true)
     this._drawQueue(L, this.p2, L.p2QueueY, true)
     this._drawHud(L, this.p2, L.p2HudY, true)
     this._drawArena(L)
     this._drawFighters(L)
     this._drawHud(L, this.p1, L.p1HudY, false)
     this._drawQueue(L, this.p1, L.p1QueueY, false)
+    this._drawTimer(L, false)
     this._drawLog(L)
     this._drawPhaseUI(L)
   }
@@ -665,12 +656,82 @@ class ClocksOutGame {
     ctx.restore()
   }
 
-  // ── HUD strip ────────────────────────────────────────────────────────────────
+  // ── Timer strip ──────────────────────────────────────────────────────────────
+  // Drawn between btn strip and queue; flipped=true for P2 (sits above P2 queue)
+  _drawTimer(L, flipped) {
+    const { ctx }            = this
+    const { W, timerH }      = L
+    const y                  = flipped ? L.p2TimerY : L.p1TimerY
+    const isInput            = this.phase === PHASE.INPUT
+    const isBetween          = this.phase === PHASE.BETWEEN
+
+    ctx.save()
+    if (flipped) {
+      ctx.translate(W / 2, y + timerH / 2)
+      ctx.rotate(Math.PI)
+      ctx.translate(-W / 2, -(y + timerH / 2))
+    }
+
+    // Background
+    ctx.fillStyle = C.surface
+    ctx.fillRect(0, y, W, timerH)
+
+    // Progress bar (full width)
+    if (isInput) {
+      const pct = this.timeLeft / (this.timerS * 1000)
+      ctx.fillStyle = pct > 0.4 ? C.p1 + '55' : C.dmg + '55'
+      ctx.fillRect(0, y, W * pct, timerH)
+    }
+    if (isBetween) {
+      const pct = this.betweenTimer / this.BETWEEN_MS
+      ctx.fillStyle = C.muted + '33'
+      ctx.fillRect(0, y, W * pct, timerH)
+    }
+
+    // Border
+    ctx.strokeStyle = C.border; ctx.lineWidth = 1
+    ctx.strokeRect(0, y, W, timerH)
+
+    const mid = y + timerH / 2
+    ctx.textBaseline = 'middle'
+
+    // Timer value (left)
+    if (isInput) {
+      const secs = (this.timeLeft / 1000).toFixed(1)
+      ctx.fillStyle = this.timeLeft < 2000 ? C.dmg : C.accentHot
+      ctx.font      = `bold ${Math.max(8, timerH * 0.62)}px 'Courier New', monospace`
+      ctx.textAlign = 'left'
+      ctx.fillText(secs, 8, mid)
+    } else if (isBetween) {
+      ctx.fillStyle = C.muted + '88'
+      ctx.font      = `${Math.max(7, timerH * 0.52)}px 'Courier New', monospace`
+      ctx.textAlign = 'left'
+      ctx.fillText('next sequence…', 8, mid)
+    } else if (this.phase === PHASE.RESOLVE) {
+      ctx.fillStyle = C.muted + 'aa'
+      ctx.font      = `bold ${Math.max(7, timerH * 0.52)}px 'Courier New', monospace`
+      ctx.textAlign = 'left'
+      ctx.fillText('EXECUTING', 8, mid)
+    }
+
+    // Match score (right, if Bo3/5)
+    if (this.matchFmt > 1) {
+      const [w1, w2] = this.roundWins
+      ctx.fillStyle  = C.muted
+      ctx.font       = `${Math.max(7, timerH * 0.5)}px 'Courier New', monospace`
+      ctx.textAlign  = 'right'
+      ctx.fillText(`${w1}–${w2}`, W - 8, mid)
+    }
+
+    ctx.restore()
+  }
+
+  // ── HUD strip: name · HP bar · ult bar · match score ────────────────────────
   _drawHud(L, fighter, y, flipped) {
-    const { ctx }   = this
-    const { W, hudH } = L
-    const col       = fighter.colour
-    const opp       = fighter.id === 1 ? this.p2 : this.p1
+    const { ctx }        = this
+    const { W, hudH }    = L
+    const col            = fighter.colour
+    const ultRdy         = fighter.ult >= 100
 
     ctx.save()
     if (flipped) {
@@ -679,73 +740,66 @@ class ClocksOutGame {
       ctx.translate(-W / 2, -(y + hudH / 2))
     }
 
-    // Background strip
-    ctx.fillStyle = C.surface + 'cc'
+    // Background
+    ctx.fillStyle = C.surface
     ctx.fillRect(0, y, W, hudH)
-    ctx.strokeStyle = C.border
-    ctx.lineWidth   = 1
+    ctx.strokeStyle = C.border; ctx.lineWidth = 1
     ctx.strokeRect(0, y, W, hudH)
 
-    const mid = y + hudH / 2
+    // Divide hudH: top half = HP bar, bottom half = ult bar, with name and score as text
+    const innerPad = 3
+    const barAreaH = hudH - innerPad * 2
+    const hpH      = Math.floor(barAreaH * 0.52)
+    const ultH     = barAreaH - hpH - 2
+    const hpY      = y + innerPad
+    const ultBarY  = hpY + hpH + 2
+
+    const nameW   = W * 0.28
+    const scoreW  = W * 0.1
+    const barX    = nameW + 6
+    const barW    = W - barX - scoreW - 10
+
+    // ── Name ──
+    ctx.fillStyle    = col
+    ctx.font         = `bold ${Math.max(7, hudH * 0.38)}px 'Courier New', monospace`
+    ctx.textAlign    = 'left'
     ctx.textBaseline = 'middle'
-    ctx.font         = `bold ${Math.max(8, hudH * 0.52)}px 'Courier New', monospace`
+    ctx.fillText(`P${fighter.id}: ${fighter.name}`, innerPad + 4, y + hudH / 2)
 
-    // P label + name
-    ctx.fillStyle = col
-    ctx.textAlign = 'left'
-    ctx.fillText(`P${fighter.id}: ${fighter.name}`, 8, mid)
-
-    // HP bar (centre-left)
-    const barW = W * 0.22, barH = Math.max(4, hudH * 0.35)
-    const barX = W * 0.32, barY = y + (hudH - barH) / 2
-    ctx.fillStyle = C.surface2; ctx.fillRect(barX, barY, barW, barH)
+    // ── HP bar ──
+    ctx.fillStyle = C.surface2;  ctx.fillRect(barX, hpY, barW, hpH)
     ctx.fillStyle = fighter.hp > MAX_HP * 0.4 ? col : C.dmg
-    ctx.fillRect(barX, barY, barW * Math.max(0, fighter.hp / MAX_HP), barH)
-    ctx.strokeStyle = C.border; ctx.lineWidth = 1; ctx.strokeRect(barX, barY, barW, barH)
+    ctx.fillRect(barX, hpY, barW * Math.max(0, fighter.hp / MAX_HP), hpH)
+    ctx.strokeStyle = C.border; ctx.lineWidth = 1
+    ctx.strokeRect(barX, hpY, barW, hpH)
+    // HP number
+    ctx.fillStyle    = C.accentHot
+    ctx.font         = `bold ${Math.max(6, hpH * 0.75)}px 'Courier New', monospace`
+    ctx.textAlign    = 'right'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(`${Math.max(0, fighter.hp)}HP`, barX + barW - 3, hpY + hpH / 2)
 
-    // HP text
-    ctx.fillStyle = col
-    ctx.font      = `bold ${Math.max(7, hudH * 0.45)}px 'Courier New', monospace`
-    ctx.textAlign = 'left'
-    ctx.fillText(`${Math.max(0, fighter.hp)}HP`, barX + barW + 5, mid)
-
-    // Ult meter (centre-right)
-    const ultW = W * 0.16, ultH = Math.max(4, hudH * 0.35)
-    const ultX = W * 0.62, ultY = y + (hudH - ultH) / 2
-    const ultRdy = fighter.ult >= 100
-    ctx.fillStyle = C.surface2; ctx.fillRect(ultX, ultY, ultW, ultH)
-    ctx.fillStyle = ultRdy ? C.ult : col + '88'
-    ctx.fillRect(ultX, ultY, ultW * (fighter.ult / 100), ultH)
+    // ── Ult bar ──
+    ctx.fillStyle = C.surface2; ctx.fillRect(barX, ultBarY, barW, ultH)
+    ctx.fillStyle = ultRdy ? C.ult : col + '77'
+    ctx.fillRect(barX, ultBarY, barW * (fighter.ult / 100), ultH)
     ctx.strokeStyle = ultRdy ? C.ult : C.border; ctx.lineWidth = 1
-    ctx.strokeRect(ultX, ultY, ultW, ultH)
+    ctx.strokeRect(barX, ultBarY, barW, ultH)
+    // Ult label
+    ctx.fillStyle    = ultRdy ? C.ult : C.muted
+    ctx.font         = `${Math.max(5, ultH * 0.72)}px 'Courier New', monospace`
+    ctx.textAlign    = 'right'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(ultRdy ? 'ULT READY' : `ULT ${Math.floor(fighter.ult)}%`, barX + barW - 3, ultBarY + ultH / 2)
 
-    ctx.fillStyle = ultRdy ? C.ult : C.muted
-    ctx.font      = `${Math.max(6, hudH * 0.38)}px 'Courier New', monospace`
-    ctx.textAlign = 'left'
-    ctx.fillText(ultRdy ? 'ULT!' : `ULT ${Math.floor(fighter.ult)}%`, ultX + ultW + 5, mid)
-
-    // Timer (far right) — only show on the P1 HUD (non-flipped) once, to avoid duplication
-    if (!flipped && this.phase === PHASE.INPUT) {
-      ctx.fillStyle = this.timeLeft < 2000 ? C.dmg : C.accentHot
-      ctx.font      = `bold ${Math.max(9, hudH * 0.55)}px 'Courier New', monospace`
-      ctx.textAlign = 'right'
-      ctx.fillText((this.timeLeft / 1000).toFixed(1), W - 8, mid)
-    }
-    if (flipped && this.phase === PHASE.INPUT) {
-      ctx.fillStyle = this.timeLeft < 2000 ? C.dmg : C.accentHot
-      ctx.font      = `bold ${Math.max(9, hudH * 0.55)}px 'Courier New', monospace`
-      ctx.textAlign = 'right'
-      ctx.fillText((this.timeLeft / 1000).toFixed(1), W - 8, mid)
-    }
-
-    // Match score if Bo3/5
+    // ── Match score ── (far right)
     if (this.matchFmt > 1) {
       const [w1, w2] = this.roundWins
-      const score    = `${w1}–${w2}`
-      ctx.fillStyle  = C.muted
-      ctx.font       = `${Math.max(6, hudH * 0.38)}px 'Courier New', monospace`
-      ctx.textAlign  = 'right'
-      ctx.fillText(score, W - (this.phase === PHASE.INPUT ? 38 : 8), mid)
+      ctx.fillStyle    = C.muted
+      ctx.font         = `bold ${Math.max(7, hudH * 0.36)}px 'Courier New', monospace`
+      ctx.textAlign    = 'right'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(`${w1}–${w2}`, W - innerPad - 4, y + hudH / 2)
     }
 
     ctx.restore()
@@ -840,36 +894,41 @@ class ClocksOutGame {
   }
 
   // ── Fighters ─────────────────────────────────────────────────────────────────
+  // Each fighter shows (stacked above the square): name / HP bar / ult meter / [square]
   _drawFighters(L) {
-    const { ctx }            = this
-    const { W, arenaY, arenaH, tileW } = L
+    const { ctx }                      = this
+    const { arenaY, arenaH, tileW }    = L
 
     const draw = (f) => {
       const col    = f.colour
       const cx     = f.tile * tileW + tileW / 2
-      const cy     = arenaY + arenaH * 0.45
-      const size   = Math.min(tileW * 0.6, arenaH * 0.55)
+      const cy     = arenaY + arenaH / 2
       const flashA = f.flash > 0 ? Math.min(1, f.flash / 180) : 0
+      const size   = Math.min(tileW * 0.62, arenaH * 0.72)
       const half   = size / 2
 
       ctx.save()
       ctx.translate(cx, cy)
 
-      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.4)
+      // Glow
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.3)
       g.addColorStop(0, col + '28'); g.addColorStop(1, 'transparent')
       ctx.fillStyle = g
-      ctx.beginPath(); ctx.arc(0, 0, size * 1.4, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.arc(0, 0, size * 1.3, 0, Math.PI * 2); ctx.fill()
 
+      // Body
       ctx.fillStyle   = flashA > 0 ? `rgba(220,90,90,${flashA * 0.7})` : col + '1a'
       ctx.fillRect(-half, -half, size, size)
       ctx.strokeStyle = flashA > 0 ? `rgba(255,140,140,${0.5 + flashA * 0.5})` : col
       ctx.lineWidth   = 2; ctx.strokeRect(-half, -half, size, size)
 
-      ctx.fillStyle = flashA > 0 ? `rgba(255,160,160,${0.6 + flashA * 0.4})` : col
-      ctx.font = `${size * 0.48}px Arial`
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      // Facing arrow
+      ctx.fillStyle    = flashA > 0 ? `rgba(255,160,160,${0.7 + flashA * 0.3})` : col
+      ctx.font         = `${size * 0.48}px Arial`
+      ctx.textAlign    = 'center'; ctx.textBaseline = 'middle'
       ctx.fillText(f.facingRight ? '▶' : '◀', 0, 0)
 
+      // Block indicator
       if (f.blocking) {
         ctx.strokeStyle = '#99ccff'; ctx.lineWidth = 2
         ctx.setLineDash([4, 3])
@@ -877,15 +936,15 @@ class ClocksOutGame {
         ctx.setLineDash([])
       }
 
-      // Status badges
+      // Status badges below square
       let badgeY = half + 4
       const badge = (text, c) => {
         ctx.fillStyle = c; ctx.font = `7px 'Courier New', monospace`
         ctx.textAlign = 'center'; ctx.textBaseline = 'top'
         ctx.fillText(text, 0, badgeY); badgeY += 9
       }
-      if (f.stunned    > 0) badge(`STUN ${f.stunned}`, '#ddcc44')
-      if (f.poisoned   > 0) badge(`PSND ${f.poisoned}`, '#88dd66')
+      if (f.stunned    > 0) badge(`STUN ${f.stunned}`,   '#ddcc44')
+      if (f.poisoned   > 0) badge(`PSND ${f.poisoned}`,  '#88dd66')
       if (f.restrained > 0) badge(`REST ${f.restrained}`, '#cc88ee')
 
       ctx.restore()
@@ -914,19 +973,6 @@ class ClocksOutGame {
   _drawPhaseUI(L) {
     const { ctx }   = this
     const { W, H, arenaY } = L
-
-    // Timer progress bar above arena
-    if (this.phase === PHASE.INPUT) {
-      const pct = this.timeLeft / (this.timerS * 1000)
-      ctx.fillStyle = C.border; ctx.fillRect(0, arenaY - 3, W, 2)
-      ctx.fillStyle = pct > 0.4 ? C.p1 : C.dmg
-      ctx.fillRect(0, arenaY - 3, W * pct, 2)
-    }
-
-    if (this.phase === PHASE.BETWEEN) {
-      const pct = this.betweenTimer / this.BETWEEN_MS
-      ctx.fillStyle = C.muted + '44'; ctx.fillRect(0, arenaY - 3, W * pct, 2)
-    }
 
     if (this.phase === PHASE.DEAD || this.phase === PHASE.SETOVER) {
       ctx.fillStyle = 'rgba(13,13,15,0.86)'
