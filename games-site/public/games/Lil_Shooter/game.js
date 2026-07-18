@@ -19,16 +19,13 @@ const ALIEN_H   = Math.floor(ALIEN_W * 0.75)
 const ALIEN_PAD = Math.floor(ALIEN_W * 0.55)
 
 // --- Difficulty configs ---
-// stepInterval: ms between each swarm step
-// alienFireRate: probability per alien per second of firing
-// playerSpeed: px per frame at 60fps
 const DIFF_CONFIGS = {
   easy:   { stepInterval: 900,  alienFireRate: 0.0032, playerSpeed: Math.floor(W * 0.008), scoreMod: 1 },
   normal: { stepInterval: 650,  alienFireRate: 0.0090, playerSpeed: Math.floor(W * 0.009), scoreMod: 2 },
   hard:   { stepInterval: 420,  alienFireRate: 0.0200, playerSpeed: Math.floor(W * 0.010), scoreMod: 3 },
 }
 
-// --- Formation configs, rows always 5 (1 commander + 2 starship + 2 fighter) ---
+// --- Formation configs ---
 const FORMATION_CONFIGS = {
   classic: { rows: 5, cols: 11 },
   dense:   { rows: 5, cols: 13 },
@@ -36,19 +33,14 @@ const FORMATION_CONFIGS = {
 }
 
 // --- Row roles (fixed 5-row layout) ---
-// row 0:   Commanders  - 30pts  (1 row)
-// row 1-2: Starships   - 20pts  (2 rows)
-// row 3-4: Fighters    - 10pts  (2 rows)
 const ROW_POINTS = [30, 20, 20, 10, 10]
 
-// alien type: 0=Commander, 1=Starship, 2=Fighter
 function alienType(row) {
   if (row === 0) return 0
   if (row <= 2)  return 1
   return 2
 }
 
-// CRT phosphor palette
 const TYPE_COLORS = ["#ffffff", "#aaffaa", "#00ff88"]
 
 // ─── Mothership ───────────────────────────────────────────────────────────────
@@ -64,6 +56,7 @@ let motherSpawnDelay      = 0
 let motherSpawnedThisWave = false
 
 function spawnMothership() {
+  if (motherSpawnedThisWave) return   // hard gate: only one per wave
   const goRight = Math.random() < 0.5
   mothership = {
     x:         goRight ? -MOTHER_W / 2 : W + MOTHER_W / 2,
@@ -79,7 +72,7 @@ function spawnMothership() {
 
 function resetMotherTimer() {
   motherSpawnTimer      = 0
-  motherSpawnDelay      = 20000 + Math.random() * 20000   // 20–40 s
+  motherSpawnDelay      = 20000 + Math.random() * 20000
   motherSpawnedThisWave = false
   mothership            = null
 }
@@ -87,7 +80,6 @@ function resetMotherTimer() {
 function drawMothership() {
   if (!mothership) return
 
-  // Score flash after destruction
   if (!mothership.alive) {
     if (mothership.flashTtl > 0) {
       mothership.flashTtl--
@@ -113,7 +105,6 @@ function drawMothership() {
     ctx.fillRect(Math.round(cx - w/2 + nx*w), Math.round(cy - h/2 + ny*h), px, px)
   }
 
-  // Classic saucer silhouette
   const pts = [
     [0.35,0.05],[0.4,0.05],[0.45,0.05],[0.5,0.05],[0.55,0.05],[0.6,0.05],
     [0.25,0.2],[0.3,0.2],[0.35,0.2],[0.4,0.2],[0.45,0.2],[0.5,0.2],[0.55,0.2],[0.6,0.2],[0.65,0.2],[0.7,0.2],[0.75,0.2],
@@ -122,20 +113,15 @@ function drawMothership() {
     [0.2,0.75],[0.3,0.75],[0.45,0.75],[0.55,0.75],[0.7,0.75],[0.8,0.75],
   ]
   pts.forEach(([nx,ny]) => dot(nx,ny))
-  // windows
   ctx.fillStyle = "#ffaacc"
   dot(0.3,0.4); dot(0.45,0.4); dot(0.6,0.4); dot(0.75,0.4)
 }
 
-// ─── Alien pixel art ─────────────────────────────────────────────────────────
-// Each alien type has two animation frames drawn with canvas primitives.
-// All coordinates are normalised 0-1 relative to ALIEN_W × ALIEN_H.
-
+// ─── Alien pixel art ──────────────────────────────────────────────────────────
 function drawAlienPixels(cx, cy, type, frame, color) {
   ctx.fillStyle = color
   const w = ALIEN_W
   const h = ALIEN_H
-  // pixel size
   const px = Math.max(1, Math.floor(w / 10))
 
   function dot(nx, ny) {
@@ -147,8 +133,6 @@ function drawAlienPixels(cx, cy, type, frame, color) {
   }
 
   if (type === 0) {
-    // Squid: top row, narrow with tentacles
-    // body
     const bodyPts = [
       [0.35,0.05],[0.4,0.05],[0.45,0.05],[0.5,0.05],[0.55,0.05],[0.6,0.05],
       [0.3,0.15],[0.35,0.15],[0.4,0.15],[0.45,0.15],[0.5,0.15],[0.55,0.15],[0.6,0.15],[0.65,0.15],
@@ -158,9 +142,7 @@ function drawAlienPixels(cx, cy, type, frame, color) {
       [0.3,0.55],[0.4,0.55],[0.55,0.55],[0.65,0.55],
     ]
     bodyPts.forEach(([nx,ny]) => dot(nx,ny))
-    // eyes
     dot(0.35, 0.2); dot(0.6, 0.2)
-    // frame-dependent feet
     if (frame === 0) {
       dot(0.25,0.65); dot(0.35,0.65); dot(0.6,0.65); dot(0.7,0.65)
     } else {
@@ -169,7 +151,6 @@ function drawAlienPixels(cx, cy, type, frame, color) {
     }
 
   } else if (type === 1) {
-    // Crab: mid rows, wide claws
     const bodyPts = [
       [0.35,0.05],[0.6,0.05],
       [0.3,0.15],[0.35,0.15],[0.4,0.15],[0.5,0.15],[0.55,0.15],[0.6,0.15],[0.65,0.15],
@@ -179,7 +160,7 @@ function drawAlienPixels(cx, cy, type, frame, color) {
       [0.3,0.55],[0.35,0.55],[0.6,0.55],[0.65,0.55],
     ]
     bodyPts.forEach(([nx,ny]) => dot(nx,ny))
-    dot(0.35, 0.15); dot(0.6, 0.15) // eyes
+    dot(0.35, 0.15); dot(0.6, 0.15)
     if (frame === 0) {
       dot(0.2,0.65); dot(0.25,0.65); dot(0.7,0.65); dot(0.75,0.65)
       dot(0.35,0.65); dot(0.6,0.65)
@@ -189,7 +170,6 @@ function drawAlienPixels(cx, cy, type, frame, color) {
     }
 
   } else {
-    // Octopus: bottom rows, tentacled and wide
     const bodyPts = [
       [0.3,0.1],[0.35,0.1],[0.4,0.1],[0.45,0.1],[0.5,0.1],[0.55,0.1],[0.6,0.1],[0.65,0.1],
       [0.25,0.2],[0.3,0.2],[0.35,0.2],[0.4,0.2],[0.45,0.2],[0.5,0.2],[0.55,0.2],[0.6,0.2],[0.65,0.2],[0.7,0.2],
@@ -199,7 +179,7 @@ function drawAlienPixels(cx, cy, type, frame, color) {
       [0.3,0.6],[0.4,0.6],[0.55,0.6],[0.65,0.6],
     ]
     bodyPts.forEach(([nx,ny]) => dot(nx,ny))
-    dot(0.3, 0.2); dot(0.65, 0.2) // eyes
+    dot(0.3, 0.2); dot(0.65, 0.2)
     if (frame === 0) {
       dot(0.25,0.7); dot(0.3,0.7); dot(0.65,0.7); dot(0.7,0.7)
       dot(0.4,0.75); dot(0.55,0.75)
@@ -210,52 +190,50 @@ function drawAlienPixels(cx, cy, type, frame, color) {
   }
 }
 
-// ─── Player pixel art (laser cannon) as solid blocks ──────────────────────────
+// ─── Player pixel art ─────────────────────────────────────────────────────────
 function drawPlayerPixels(cx, cy) {
   const w = Math.floor(ALIEN_W * 1.6)
   const h = Math.floor(ALIEN_H * 1.2)
   ctx.fillStyle = "#00ff88"
 
-  // Barrel — narrow centered column
   const barrelW = Math.max(2, Math.floor(w * 0.13))
   const barrelH = Math.floor(h * 0.28)
   ctx.fillRect(Math.round(cx - barrelW / 2), Math.round(cy - h / 2), barrelW, barrelH)
 
-  // Turret — medium block
   const turretW = Math.floor(w * 0.52)
   const turretH = Math.floor(h * 0.30)
   const turretY = Math.round(cy - h / 2 + barrelH)
   ctx.fillRect(Math.round(cx - turretW / 2), turretY, turretW, turretH)
 
-  // Base — full-width block
   const baseH = Math.floor(h * 0.32)
   const baseY = Math.round(cy + h / 2 - baseH)
   ctx.fillRect(Math.round(cx - w / 2), baseY, w, baseH)
 }
 
 // ─── Barricades ───────────────────────────────────────────────────────────────
-// Pixel-level destructible barricades.
-// Each barricade stores a per-pixel boolean grid.
-// Bullets punch a procedural crater: entry point offset 10-30% in vertically,
-// 5-10% in horizontally, then shred a 5-10% radius around it (50/50 per pixel).
+// FIX: hardcode logical grid dimensions so the bunker silhouette is consistent
+// across all screen sizes and pixel densities. B_CELL is derived from cols,
+// not the other way around.
 
 const BARRICADE_COUNT = 4
-// Cell = 1 screen pixel cluster; we use B_CELL px per logical pixel for visibility
-const B_CELL  = Math.max(3, Math.floor(W * 0.004))
-const B_COLS  = Math.floor(W * 0.076 / B_CELL)
-const B_ROWS  = Math.floor(H * 0.081 / B_CELL)
+const B_COLS  = 26                                           // doubled from 13
+const B_ROWS  = 20                                           // doubled from 10
+const B_CELL  = Math.max(2, Math.floor(W * 0.076 / B_COLS)) // half the cell size
 const B_W     = B_COLS * B_CELL
 const B_H     = B_ROWS * B_CELL
 
-// Classic bunker silhouette mask (1=solid)
+// Classic bunker silhouette mask on doubled 26×20 grid:
+//   rows 0–5  : top arch  (cols 6–19)  → matches original proportions × 2
+//   rows 6–19 : body      (cols 0–25)  → full width
+//   rows 12–19: notch cut (cols 8–17)  → centre-bottom cut-out
 const BUNKER_MASK = (() => {
   const m = new Uint8Array(B_COLS * B_ROWS)
   for (let r = 0; r < B_ROWS; r++) {
     for (let c = 0; c < B_COLS; c++) {
-      const inBody  = c >= 1 && c < B_COLS - 1 && r >= Math.floor(B_ROWS * 0.17)
-      const inTop   = c >= Math.floor(B_COLS * 0.22) && c < Math.floor(B_COLS * 0.78) && r < Math.floor(B_ROWS * 0.17)
-      const inNotch = c >= Math.floor(B_COLS * 0.33) && c < Math.floor(B_COLS * 0.67) && r >= Math.floor(B_ROWS * 0.67)
-      m[r * B_COLS + c] = (inBody || inTop) && !inNotch ? 1 : 0
+      const inTop   = r < 6  && c >= 6 && c <= 19
+      const inBody  = r >= 6
+      const inNotch = r >= 12 && c >= 8 && c <= 17
+      m[r * B_COLS + c] = (inTop || inBody) && !inNotch ? 1 : 0
     }
   }
   return m
@@ -263,12 +241,13 @@ const BUNKER_MASK = (() => {
 
 function buildBarricades() {
   const bArr   = []
-  const spacing = W * 0.8 / (BARRICADE_COUNT + 1)
-  const startX  = W * 0.1
+  const gap     = B_W * 0.9   // 0.9 barricade-widths between each one
+  const totalW  = BARRICADE_COUNT * B_W + (BARRICADE_COUNT - 1) * gap
+  const startX  = (W - totalW) / 2
   const by      = player.y - player.h / 2 - B_H - Math.floor(H * 0.04)
   for (let i = 0; i < BARRICADE_COUNT; i++) {
-    const bx    = startX + spacing * (i + 1) - B_W / 2
-    const cells = new Uint8Array(BUNKER_MASK)   // copy mask: 1=alive, 0=dead
+    const bx    = startX + i * (B_W + gap)
+    const cells = new Uint8Array(BUNKER_MASK)
     bArr.push({ x: bx, y: by, cells })
   }
   return bArr
@@ -287,20 +266,9 @@ function drawBarricades() {
 }
 
 // ─── Barricade destruction ────────────────────────────────────────────────────
-//
-// Path-trace to guaranteed edge contact, then carve:
-//   1. A vertical tunnel 1–3 cells wide, 1–3 cells deep
-//   2. Immediate clear: all cells touching the tunnel walls → deleted
-//   3. Grid shred: cells beyond that, alternating skip-2 / skip-1 columns
-//      in a checkerboard, up to (tunnel depth + 2) rows deep
-//
-// fromAbove=true  → alien bullet, scan top-to-bottom, delete downward
-// fromAbove=false → player bullet, scan bottom-to-top, delete upward
-
 function punchBarricade(b, hitCol, fromAbove) {
   hitCol = Math.max(0, Math.min(B_COLS - 1, hitCol))
 
-  // 1. Find the first solid row from the entry side
   let entryRow = -1
   if (fromAbove) {
     for (let r = 0; r < B_ROWS; r++) {
@@ -311,54 +279,44 @@ function punchBarricade(b, hitCol, fromAbove) {
       if (b.cells[r * B_COLS + hitCol]) { entryRow = r; break }
     }
   }
-  if (entryRow === -1) return   // column is already empty
+  if (entryRow === -1) return
 
-  // 2. Tunnel parameters
-  const tunnelW     = 1 + Math.floor(Math.random() * 3)   // 1–3 cells wide
-  const tunnelDepth = 1 + Math.floor(Math.random() * 3)   // 1–3 cells deep
+  const tunnelW     = 1 + Math.floor(Math.random() * 3)
+  const tunnelDepth = 1 + Math.floor(Math.random() * 3)
   const halfW       = Math.floor(tunnelW / 2)
   const colMin      = Math.max(0, hitCol - halfW)
   const colMax      = Math.min(B_COLS - 1, hitCol + halfW)
 
-  // Row range of the tunnel (going inward from entry)
   const dir      = fromAbove ? 1 : -1
   const rowStart = entryRow
   const rowEnd   = Math.min(B_ROWS - 1, Math.max(0, entryRow + dir * (tunnelDepth - 1)))
   const rMin     = Math.min(rowStart, rowEnd)
   const rMax     = Math.max(rowStart, rowEnd)
 
-  // 3. Carve tunnel
   for (let r = rMin; r <= rMax; r++) {
     for (let c = colMin; c <= colMax; c++) {
       b.cells[r * B_COLS + c] = 0
     }
   }
 
-  // 4. Immediate clear ring: all cells one step outside the tunnel
   const clearRMin = Math.max(0, rMin - 1)
   const clearRMax = Math.min(B_ROWS - 1, rMax + 1)
   const clearCMin = Math.max(0, colMin - 1)
   const clearCMax = Math.min(B_COLS - 1, colMax + 1)
   for (let r = clearRMin; r <= clearRMax; r++) {
     for (let c = clearCMin; c <= clearCMax; c++) {
-      // skip the tunnel interior itself (already cleared)
       if (r >= rMin && r <= rMax && c >= colMin && c <= colMax) continue
       b.cells[r * B_COLS + c] = 0
     }
   }
 
-  // 5. Grid shred: alternating skip-2 / skip-1 beyond the clear ring,
-  //    up to (tunnelDepth + 2) extra rows deep in the entry direction
-  const shredRows  = tunnelDepth + 2
-  const shredCMin  = Math.max(0, clearCMin - 1)
-  const shredCMax  = Math.min(B_COLS - 1, clearCMax + 1)
+  const shredRows = tunnelDepth + 2
+  const shredCMin = Math.max(0, clearCMin - 1)
+  const shredCMax = Math.min(B_COLS - 1, clearCMax + 1)
 
   for (let step = 1; step <= shredRows; step++) {
-    const r = fromAbove
-      ? clearRMax + step
-      : clearRMin - step
+    const r = fromAbove ? clearRMax + step : clearRMin - step
     if (r < 0 || r >= B_ROWS) break
-    // alternating columns: even step → delete every-other-2, odd step → every-other-1
     const skip = (step % 2 === 0) ? 2 : 1
     for (let c = shredCMin; c <= shredCMax; c++) {
       if (c % (skip + 1) !== 0) continue
@@ -367,27 +325,20 @@ function punchBarricade(b, hitCol, fromAbove) {
   }
 }
 
-// Path-traced barricade hit: finds which barricade a bullet X crosses, traces
-// to the correct edge row, punches it, returns true if anything was hit.
 function barricadeHit(bx, by, fromAbove) {
   for (const b of barricades) {
-    // Coarse X check
     if (bx < b.x || bx >= b.x + B_W) continue
-    // Coarse Y check 
     if (by < b.y - B_CELL || by > b.y + B_H + B_CELL) continue
 
     const col = Math.floor((bx - b.x) / B_CELL)
     if (col < 0 || col >= B_COLS) continue
 
-    // Check whether this column has any live cell at all
     let hasLive = false
     for (let r = 0; r < B_ROWS; r++) {
       if (b.cells[r * B_COLS + col]) { hasLive = true; break }
     }
     if (!hasLive) continue
 
-    // Also verify the bullet's Y is in the right zone relative to direction
-    // (alien bullets arrive from above, player bullets from below)
     if (fromAbove && by > b.y + B_H) continue
     if (!fromAbove && by < b.y) continue
 
@@ -397,8 +348,6 @@ function barricadeHit(bx, by, fromAbove) {
   return false
 }
 
-// Game over when any alive alien descends to the barricade Y level.
-// Uses the top of the first barricade as the threshold (all share the same Y).
 function aliensReachedBarricadeLevel() {
   if (!barricades.length) return false
   const barricadeTopY = barricades[0].y
@@ -421,12 +370,10 @@ function buildSwarm(formation) {
   const grid = []
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      // sparse: skip checkerboard pattern in outer positions
       if (formation === "sparse" && (r + c) % 2 !== 0) continue
       grid.push({
         x: startX + c * (ALIEN_W + ALIEN_PAD),
         y: startY + r * (ALIEN_H + ALIEN_PAD),
-        // offset for swarm marching
         homeX: startX + c * (ALIEN_W + ALIEN_PAD),
         row: r,
         col: c,
@@ -451,11 +398,19 @@ let cfg           = null
 let alienFrame    = 0
 let shootCooldown = 0
 let explosions    = []
-let waveFireRate  = 0   // scales up each wave at ×1.1
+let waveFireRate  = 0
 
-// --- Control mode ---
-let mouseControl  = false   // false = keyboard, true = mouse
-let mouseTargetX  = null    // canvas-space X the player should track
+let mouseControl  = false
+let mouseTargetX  = null
+
+// Bullet speed: H px in 0.9s → H / 0.9 px per second.
+// Movement each frame = speed * (dt / 1000) since dt is in ms.
+const BULLET_SPEED_PPS   = H / 0.9   // player bullet: full screen height in 0.9s
+const A_BULLET_SPEED_PPS = H / 1.8   // alien bullet: half player speed
+
+// FIX: target number of swarm descent steps before reaching the player.
+// Derived once per initGame() so it's proportional regardless of screen H.
+const MAX_DESCENTS = 14
 
 function initGame(diff, formation) {
   selectedDiff      = diff
@@ -477,7 +432,6 @@ function initGame(diff, formation) {
   stepTimer     = 0
   swarmDir      = 1
   stepSize      = Math.floor(W * 0.022)
-  descentStep   = Math.floor(H * 0.028)
   alienFrame    = 0
   shootCooldown = 0
   explosions    = []
@@ -494,6 +448,12 @@ function initGame(diff, formation) {
     h: Math.floor(ALIEN_H * 1.1),
     speed: cfg.playerSpeed,
   }
+
+  // FIX: descentStep calculated so the swarm always takes MAX_DESCENTS steps
+  // to travel from its start Y to the player zone, regardless of screen height.
+  const swarmStartY  = Math.floor(H * 0.10) + ALIEN_H / 2
+  const swarmRange   = (player.y - player.h / 2) - swarmStartY
+  descentStep        = Math.max(4, Math.floor(swarmRange / MAX_DESCENTS))
 
   bullets      = []
   alienBullets = []
@@ -553,16 +513,13 @@ function updateFromEvent(e) {
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 const keys = {}
-let mouseHeld = false   // true while mouse button is held on canvas
+let mouseHeld = false
 
 document.addEventListener("keydown", (e) => {
   keys[e.key] = true
 
-  // Movement keys switch to keyboard mode for movement, but don't kill mouse mode entirely
-  // in keyboard mode, A/D move the player; in mouse mode, cursor does
   if (["ArrowLeft","ArrowRight","a","d"].includes(e.key) && running && !paused) {
-    mouseControl = false   // keyboard takes over movement
-    // mouseTargetX stays so we can re-engage mouse on next click
+    mouseControl = false
   }
 
   if (e.key === "Escape") {
@@ -573,24 +530,21 @@ document.addEventListener("keydown", (e) => {
   if (e.key === " ") {
     e.preventDefault()
     if (running && paused) { togglePause(); return }
-    // auto-fire while playing handled in update loop
     return
   }
-  if (e.key === "w" || e.key === "W") return           // auto-fire handled in update
+  if (e.key === "w" || e.key === "W") return
   if (e.key === "r" || e.key === "R") { stopMusic(); playMusic(); initGame(selectedDiff, selectedFormation); return }
   if (e.key === "q" || e.key === "Q") { stopMusic(); returnToMenu(); return }
   if (["ArrowLeft","ArrowRight"].includes(e.key)) e.preventDefault()
 })
 document.addEventListener("keyup", (e) => { keys[e.key] = false })
 
-// Mouse always tracks position (so clicking instantly moves to cursor)
 canvas.addEventListener("mousemove", (e) => {
   if (!running || paused) return
   const rect = canvas.getBoundingClientRect()
   mouseTargetX = (e.clientX - rect.left) * (canvas.width / rect.width)
 })
 
-// Mousedown on canvas → engage mouse mode + start holding to auto-fire
 canvas.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return
   if (!running || paused) return
@@ -598,21 +552,18 @@ canvas.addEventListener("mousedown", (e) => {
   mouseHeld    = true
   const rect = canvas.getBoundingClientRect()
   mouseTargetX = (e.clientX - rect.left) * (canvas.width / rect.width)
-  playerShoot()   // fire immediately on press
+  playerShoot()
 })
 
-// Mouseup anywhere → release hold-fire
 document.addEventListener("mouseup", (e) => {
   if (e.button === 0) mouseHeld = false
 })
 
-// Click on canvas: handle pause overlay and end-screen buttons
 canvas.addEventListener("click", (e) => {
   const rect = canvas.getBoundingClientRect()
   const tapY = (e.clientY - rect.top) * (canvas.height / rect.height)
 
   if (!running) {
-    // End screen
     const menuY  = H / 2 + 56
     const resetY = H / 2 + 76
     if (tapY >= menuY  - 16 && tapY <= menuY  + 8) { returnToMenu(); return }
@@ -621,23 +572,21 @@ canvas.addEventListener("click", (e) => {
   }
 
   if (paused) {
-    // Pause overlay
     const resumeY  = H / 2 + 5
     const restartY = H / 2 + 30
     if (tapY >= resumeY  - 16 && tapY <= resumeY  + 8) { togglePause(); return }
     if (tapY >= restartY - 16 && tapY <= restartY + 8) { stopMusic(); playMusic(); initGame(selectedDiff, selectedFormation); return }
     return
   }
-  // In-game clicks handled by mousedown already
 })
 
-// Touch: tap to shoot + drag to move
 let lastTouchX = null
 canvas.addEventListener("touchstart", (e) => {
   if (!running || paused) return
   e.preventDefault()
   lastTouchX = e.touches[0].clientX
-  playerShoot()
+  mouseHeld = true     // begin continuous fire
+  playerShoot()        // fire immediately on tap
 }, { passive: false })
 canvas.addEventListener("touchmove", (e) => {
   if (!running || paused) return
@@ -649,23 +598,22 @@ canvas.addEventListener("touchmove", (e) => {
   }
   lastTouchX = tx
 }, { passive: false })
-canvas.addEventListener("touchend", () => { lastTouchX = null })
+canvas.addEventListener("touchend", () => {
+  lastTouchX = null
+  mouseHeld  = false   // stop continuous fire on lift
+})
 
 // ─── Shooting ─────────────────────────────────────────────────────────────────
-const BULLET_SPEED   = H * 0.016
-const A_BULLET_SPEED = H * 0.010
-const PLAYER_COOLDOWN_FRAMES = 18  // ~0.3s at 60fps; only 1 bullet on screen at a time
+const PLAYER_COOLDOWN_MS = 300   // ms between shots
 
 function playerShoot() {
   if (shootCooldown > 0) return
-  // only 1 player bullet at a time (classic 1978 rule)
   if (bullets.length >= 1) return
-  bullets.push({ x: player.x, y: player.y - player.h / 2, vy: -BULLET_SPEED })
-  shootCooldown = PLAYER_COOLDOWN_FRAMES
+  bullets.push({ x: player.x, y: player.y - player.h / 2, vy: -BULLET_SPEED_PPS })
+  shootCooldown = PLAYER_COOLDOWN_MS
 }
 
 function alienShoot() {
-  // Classic rule: only the bottom-most alien in each column can shoot
   const colBottoms = {}
   for (const a of aliens) {
     if (!a.alive) continue
@@ -677,7 +625,7 @@ function alienShoot() {
   const shooters = Object.values(colBottoms)
   for (const a of shooters) {
     if (Math.random() < waveFireRate) {
-      alienBullets.push({ x: a.x, y: a.y + ALIEN_H / 2, vy: A_BULLET_SPEED })
+      alienBullets.push({ x: a.x, y: a.y + ALIEN_H / 2, vy: A_BULLET_SPEED_PPS })
     }
   }
 }
@@ -691,7 +639,6 @@ function togglePause() {
   else draw()
 }
 
-// ─── Return to menu ───────────────────────────────────────────────────────────
 function returnToMenu() {
   document.getElementById("menu").style.display = ""
   canvas.style.display = "none"
@@ -708,8 +655,7 @@ document.getElementById("reset-btn").addEventListener("click", () => {
 function currentStepInterval() {
   const alive  = aliens.filter(a => a.alive).length
   const total  = aliens.length
-  const ratio  = alive / total  // 1.0 = full swarm, 0 = empty
-  // linearly interpolate: full swarm = stepInterval, last alien = stepInterval * 0.12
+  const ratio  = alive / total
   return stepInterval * (0.12 + 0.88 * ratio)
 }
 
@@ -731,7 +677,7 @@ let lastTime = 0
 function loop(ts) {
   requestAnimationFrame(loop)
   if (!running || paused) return
-  const dt = Math.min(ts - lastTime, 50)
+  const dt = Math.min(ts - lastTime, 50)   // cap at 50ms to avoid spiral on tab-switch
   lastTime = ts
   update(dt)
   draw()
@@ -740,28 +686,31 @@ requestAnimationFrame(loop)
 
 // ─── Update ───────────────────────────────────────────────────────────────────
 function update(dt) {
+  // FIX: normalise all per-frame movement to 60fps so 120Hz screens aren't faster.
+  // dtScale = 1.0 at 60fps, 0.5 at 120fps, 2.0 at 30fps.
+  const dtScale = dt / 16.667
+
   // --- Player movement ---
-  // Keyboard mode: arrow keys / A/D move the player
   if (!mouseControl) {
-    if (keys["ArrowLeft"]  || keys["a"]) player.x = Math.max(player.w / 2, player.x - player.speed)
-    if (keys["ArrowRight"] || keys["d"]) player.x = Math.min(W - player.w / 2, player.x + player.speed)
+    if (keys["ArrowLeft"]  || keys["a"]) player.x = Math.max(player.w / 2, player.x - player.speed * dtScale)
+    if (keys["ArrowRight"] || keys["d"]) player.x = Math.min(W - player.w / 2, player.x + player.speed * dtScale)
   }
 
-  // Mouse mode: lerp player toward cursor at keyboard speed
   if (mouseControl && mouseTargetX !== null) {
     const diff = mouseTargetX - player.x
-    const step = player.speed * 1.5
+    const step = player.speed * 1.5 * dtScale
     if (Math.abs(diff) <= step) player.x = mouseTargetX
     else player.x += Math.sign(diff) * step
     player.x = Math.max(player.w / 2, Math.min(W - player.w / 2, player.x))
   }
 
-  // Auto-fire: hold Space or W (keyboard mode), or hold mouse button (handled via mousedown flag)
-  if (running && !paused && (keys[" "] || keys["w"] || keys["W"] || mouseHeld)) {
+  // Auto-fire: called every frame; cooldown timer gates actual shot rate
+  if (keys[" "] || keys["w"] || keys["W"] || keys["ArrowUp"] || mouseHeld) {
     playerShoot()
   }
 
-  if (shootCooldown > 0) shootCooldown--
+  // Cooldown in ms, decrement by actual elapsed time
+  if (shootCooldown > 0) shootCooldown = Math.max(0, shootCooldown - dt)
 
   // --- Mothership timer + movement ---
   if (!motherSpawnedThisWave) {
@@ -769,20 +718,21 @@ function update(dt) {
     if (motherSpawnTimer >= motherSpawnDelay) spawnMothership()
   }
   if (mothership && mothership.alive) {
-    mothership.x += mothership.vx
+    // FIX: mothership speed also scaled by dtScale
+    mothership.x += mothership.vx * dtScale
     if (mothership.x < -MOTHER_W || mothership.x > W + MOTHER_W) mothership = null
   }
 
   // --- Player bullets ---
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i]
-    b.y += b.vy
+    // move by px/s × seconds elapsed this frame
+    b.y += b.vy * (dt / 1000)
+
     if (b.y < 0) { bullets.splice(i, 1); continue }
 
-    // Barricade
     if (barricadeHit(b.x, b.y, false)) { bullets.splice(i, 1); continue }
 
-    // Mothership
     if (mothership && mothership.alive) {
       if (
         b.x > mothership.x - MOTHER_W / 2 && b.x < mothership.x + MOTHER_W / 2 &&
@@ -800,7 +750,6 @@ function update(dt) {
       }
     }
 
-    // Aliens
     let hit = false
     for (const a of aliens) {
       if (!a.alive) continue
@@ -823,13 +772,12 @@ function update(dt) {
   // --- Alien bullets ---
   for (let i = alienBullets.length - 1; i >= 0; i--) {
     const b = alienBullets[i]
-    b.y += b.vy
+    b.y += b.vy * (dt / 1000)
+
     if (b.y > H) { alienBullets.splice(i, 1); continue }
 
-    // Barricade
     if (barricadeHit(b.x, b.y, true)) { alienBullets.splice(i, 1); continue }
 
-    // Player
     if (
       b.x > player.x - player.w / 2 && b.x < player.x + player.w / 2 &&
       b.y > player.y - player.h / 2 && b.y < player.y + player.h / 2
@@ -848,7 +796,7 @@ function update(dt) {
     if (--explosions[i].ttl <= 0) explosions.splice(i, 1)
   }
 
-  // --- Swarm step ---
+  // --- Swarm step (timer-based, unaffected by framerate) ---
   stepTimer += dt
   const si = currentStepInterval()
   if (stepTimer >= si) {
@@ -860,6 +808,8 @@ function update(dt) {
     const bounce = (swarmDir === 1 && maxX + stepSize >= W) ||
                    (swarmDir === -1 && minX - stepSize <= 0)
     if (bounce) {
+      // FIX: descentStep is now derived from MAX_DESCENTS / swarm travel range
+      // so descent distance is proportional on all screen sizes
       for (const a of aliens) { if (a.alive) a.y += descentStep }
       swarmDir = -swarmDir
     } else {
@@ -873,7 +823,7 @@ function update(dt) {
     if (aliensReachedBarricadeLevel())    { endGame(); return }
   }
 
-  // --- Wave cleared → next wave (infinite) ---
+  // --- Wave cleared ---
   if (aliens.every(a => !a.alive)) {
     nextWave()
     updateHUD()
@@ -881,46 +831,36 @@ function update(dt) {
 }
 
 // ─── Draw ─────────────────────────────────────────────────────────────────────
-// Ground line Y
 const GROUND_Y = H - Math.floor(H * 0.04)
 
 function draw() {
   ctx.fillStyle = "#0a0a0f"
   ctx.fillRect(0, 0, W, H)
 
-  // Ground line
   ctx.fillStyle = "#00ff88"
   ctx.fillRect(0, GROUND_Y, W, 1)
 
-  // Barricades
   drawBarricades()
-
-  // Mothership
   drawMothership()
 
-  // Aliens
   for (const a of aliens) {
     if (!a.alive) continue
     drawAlienPixels(a.x, a.y, a.type, a.frame, a.color)
   }
 
-  // Player
   drawPlayerPixels(player.x, player.y)
 
-  // Player bullets: thin bright line
   ctx.fillStyle = "#ffffff"
   for (const b of bullets) {
     ctx.fillRect(b.x - 1, b.y - 6, 2, 12)
   }
 
-  // Alien bullets: zigzag look
   ctx.fillStyle = "#ff4444"
   for (const b of alienBullets) {
     ctx.fillRect(b.x - 1, b.y - 4, 2, 8)
     ctx.fillRect(b.x - 2, b.y,     2, 3)
   }
 
-  // Explosions
   for (const ex of explosions) {
     const alpha = ex.ttl / 25
     ctx.fillStyle = `rgba(255, 200, 0, ${alpha})`
@@ -930,7 +870,6 @@ function draw() {
     ctx.fill()
   }
 
-  // Hint
   if (running && !paused) {
     ctx.fillStyle = "#333333"
     ctx.font = "10px monospace"
