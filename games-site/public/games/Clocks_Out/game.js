@@ -68,14 +68,22 @@ function actionClass(action, charId) {
     // Character-specific
     case ACTION.SP_ATK:
       if (charId === 'takashi') return ACLASS.NULL   // CHARGE step
+      if (charId === 'lia')     return ACLASS.ATTACK // DEBUFF (parryable)
+      if (charId === 'andile')  return ACLASS.NULL   // STATIC mark
       return ACLASS.ATTACK
     case ACTION.CON_ATK:
       if (charId === 'takashi') return ACLASS.DEFEND  // PARRY
+      if (charId === 'lia')     return ACLASS.ATTACK  // CHAIN
+      if (charId === 'andile')  return ACLASS.NULL    // IGNITE (not an attack)
       return ACLASS.ATTACK
     case ACTION.ENGAGE:
       if (charId === 'takashi') return ACLASS.MOVE    // DASH
+      if (charId === 'lia')     return ACLASS.ATTACK  // PULL (parryable)
+      if (charId === 'andile')  return ACLASS.MOVE    // WARP
       return ACLASS.MOVE
-    case ACTION.RECOVER:    return ACLASS.RECOVER
+    case ACTION.RECOVER:
+      if (charId === 'andile') return ACLASS.MOVE   // BLINK teleport
+      return ACLASS.RECOVER
     case ACTION.ULT:        return ACLASS.RECOVER
     default:                return ACLASS.NULL
   }
@@ -186,14 +194,76 @@ const CHARACTERS = [
     name: 'LIA', // RASSI
     colour: '#c45c8a',
     desc: 'Chain Fighter. Distance Closer Tactical.',
-    ...DUMMY_MOVESET,
+    abilityNames: { 5:'DEBUFF', 6:'CHAIN', 7:'PULL', 8:'VAMP' },
+    ultName: 'BIND',
+    info: [
+      'PASSIVE: If the enemy moves within 1 tile of Lia (by their own action or being pulled), they take 1 unblockable damage.',
+      'SP.ATK (5) — DEBUFF: 4 tile range. If the enemy declared a MOVE action this step, their next queue slot (overflowable) becomes a forced WAIT after they move.',
+      'CON.ATK (6) — CHAIN: 1 tile range. If the enemy did NOT declare a MOVE action this step, poison them for 3 turns (1 unblockable damage at the end of each of the next 3 resolve steps).',
+      'ENGAGE (7) — PULL: 4 tile range. Drag the enemy 1 tile toward Lia. Triggers passive if they land within 1 tile.',
+      'RECOVER (8) — VAMP: If the enemy is currently poisoned, heal 2HP.',
+      'ULT — BIND: 2 tile range. Deals 2 damage instantly (blockable) and stuns the enemy for their next 2 queue slots (overflowable). Resolves after movement so the enemy can back out by predicting it.',
+    ],
+    onSequenceStart() {},
+    onResolveStep(fighter, action, opponent, game) {
+      if (action === ACTION.RECOVER) {
+        // VAMP: heal 2hp if opponent is poisoned
+        if (opponent.poisoned > 0) {
+          fighter.hp = Math.min(MAX_HP, fighter.hp + 2)
+        }
+      }
+    },
+    onUlt(fighter, opponent, game) {
+      // BIND: 2 tile range, 2 damage + stun 2 slots
+      if (Math.abs(fighter.tile - opponent.tile) <= 2) {
+        // Damage (blockable, no fury since Lia has no fury)
+        const dmg = Math.max(0, 2 - (opponent.blocking ? 1 : 0))
+        opponent.hp        -= dmg
+        opponent.lastDamage += dmg
+        if (dmg > 0) fighter.chargeUlt(5)
+        // Stun 2 slots: current slot (resolveIdx) and next
+        game._forceSlot(opponent, ACTION.FORCED_WAIT)
+        // Second stun slot: one beyond the first
+        const idx2 = game.resolveIdx + 1
+        if (idx2 < game.slots) {
+          opponent.queue[idx2] = ACTION.FORCED_WAIT
+        } else {
+          // Overflow: append to nextQueuePrefix
+          if (!opponent.nextQueuePrefix.includes(ACTION.FORCED_WAIT)) {
+            opponent.nextQueuePrefix.push(ACTION.FORCED_WAIT)
+          }
+        }
+      }
+    },
   },
   {
     id: 'andile',
     name: 'ANDILE', // KASONGO
     colour: '#4ab8c4',
     desc: 'Future Fighter. Teleporter Stunner.',
-    ...DUMMY_MOVESET,
+    abilityNames: { 5:'STATIC', 6:'IGNITE', 7:'WARP', 8:'BLINK' },
+    ultName: 'ELECTRIFY',
+    info: [
+      'PASSIVE: JAB always applies a static mark to the enemy (even if blocked).',
+      'SP.ATK (5) — STATIC: 2 tile range. Applies a static mark to the enemy. No damage.',
+      'CON.ATK (6) — IGNITE: 2 tile range. Consumes static mark: deals 1 unblockable damage and stuns enemy next slot. Does nothing if no mark.',
+      'ENGAGE (7) — WARP: Teleport beside the enemy, biased toward centre.',
+      'RECOVER (8) — BLINK: Teleport to tile 4 (or 3/5 if enemy is there). Heals 1HP if not within 1 tile of enemy.',
+      'ULT — ELECTRIFY: For 4 actions, JAB deals +1 damage. Any adjacent ATTACK against Andile (blocked or not) deals 1 damage back to attacker and marks them.',
+    ],
+    onSequenceStart() {},
+    onResolveStep(fighter, action, opponent, game) {
+      // BLINK hp restore: if not adjacent to opponent after teleport
+      if (action === ACTION.RECOVER) {
+        if (Math.abs(fighter.tile - opponent.tile) > 1) {
+          fighter.hp = Math.min(MAX_HP, fighter.hp + 1)
+        }
+      }
+    },
+    onUlt(fighter, opponent, game) {
+      fighter.electrify = 4
+      fighter.ult = 0
+    },
   },
   {
     id: 'estelle',
@@ -225,6 +295,9 @@ class Fighter {
     this.fury             = 0   // actions remaining in fury (Takashi ult)
     this.nextQueuePrefix  = []  // actions prepended to next queue (carry-over)
     this.parrying         = false  // DEFEND precheck state
+    this.movedThisStep    = false  // set true if fighter moved this resolve step
+    this.staticMarked     = false  // Andile: marked for ignite
+    this.electrify        = 0     // Andile ult: actions remaining
   }
 
   get colour() { return this.charDef?.colour ?? (this.id === 1 ? C.p1 : C.p2) }
@@ -245,6 +318,9 @@ class Fighter {
     this.fury             = 0
     this.nextQueuePrefix  = []
     this.parrying         = false
+    this.movedThisStep    = false
+    this.staticMarked     = false
+    this.electrify        = 0
     // ult persists
   }
 
@@ -442,11 +518,13 @@ class ClocksOutGame {
     const c2 = this.p2.charDef?.id
     const ac1 = actionClass(a1, c1)
     const ac2 = actionClass(a2, c2)
+    this._ac1 = ac1; this._ac2 = ac2  // exposed for character ability checks
 
     // Reset per-step state
-    this.p1.blocking  = false; this.p2.blocking  = false
-    this.p1.parrying  = false; this.p2.parrying  = false
-    this.p1.lastDamage = 0;    this.p2.lastDamage = 0
+    this.p1.blocking      = false; this.p2.blocking      = false
+    this.p1.parrying      = false; this.p2.parrying      = false
+    this.p1.lastDamage    = 0;     this.p2.lastDamage    = 0
+    this.p1.movedThisStep = false;    this.p2.movedThisStep = false
 
     // ── Phase 0: DEFEND precheck ─────────────────────────────────────────────
     if (ac1 === ACLASS.DEFEND) {
@@ -457,6 +535,7 @@ class ClocksOutGame {
       if (a2 === ACTION.BLOCK)   this.p2.blocking = true
       if (a2 === ACTION.CON_ATK) this.p2.parrying = true
     }
+    // (Lia DEBUFF and PULL are ATTACK class — handled in attack phase)
 
     // ── Phase 1: MOVE ────────────────────────────────────────────────────────
     if (!this.p1.stunned && !this.p1.restrained && ac1 === ACLASS.MOVE) {
@@ -494,7 +573,29 @@ class ClocksOutGame {
       this.p2.facingRight = this.p2.tile < this.p1.tile
     }
 
-    // ── Phase 3: ATTACK ──────────────────────────────────────────────────────
+    // ── Lia passive: enemy takes 1 unblockable dmg if they moved within 1 tile ─
+    const liaPassive = (lia, opp) => {
+      if (lia.charDef?.id !== 'lia') return
+      if (opp.movedThisStep && Math.abs(lia.tile - opp.tile) <= 1) {
+        opp.hp        -= 1
+        opp.lastDamage += 1
+        lia.chargeUlt(5)
+      }
+    }
+    liaPassive(this.p1, this.p2)
+    liaPassive(this.p2, this.p1)
+
+    // ── Phase 3a: ULT (fires after movement, before other attacks) ─────────────
+    if (a1 === ACTION.ULT && this.p1.ult >= 100 && !this.p1.stunned) {
+      this.p1.charDef?.onUlt(this.p1, this.p2, this)
+      this.p1.ult = 0
+    }
+    if (a2 === ACTION.ULT && this.p2.ult >= 100 && !this.p2.stunned) {
+      this.p2.charDef?.onUlt(this.p2, this.p1, this)
+      this.p2.ult = 0
+    }
+
+    // ── Phase 3b: ATTACK ─────────────────────────────────────────────────────
     if (!this.p1.stunned && ac1 === ACLASS.ATTACK) {
       this._applyAttack(this.p1, a1, this.p2)
     }
@@ -509,9 +610,29 @@ class ClocksOutGame {
     this.p1.hp = Math.max(0, this.p1.hp)
     this.p2.hp = Math.max(0, this.p2.hp)
 
+    // ── Andile electrify retaliation ─────────────────────────────────────────
+    // If Andile has electrify and was targeted by an adjacent ATTACK, attacker takes 1 dmg + mark
+    const electrifyRetaliate = (andile, opp, oppAC) => {
+      if (andile.charDef?.id !== 'andile') return
+      if (andile.electrify <= 0) return
+      if (oppAC !== ACLASS.ATTACK) return
+      if (Math.abs(andile.tile - opp.tile) > 1) return
+      // Retaliate regardless of whether Andile blocked or took damage
+      opp.hp        -= 1
+      opp.lastDamage += 1
+      opp.staticMarked = true
+      andile.chargeUlt(5)
+    }
+    electrifyRetaliate(this.p1, this.p2, ac2)
+    electrifyRetaliate(this.p2, this.p1, ac1)
+
     // ── Phase 4: RECOVER ─────────────────────────────────────────────────────
     if (ac1 === ACLASS.RECOVER && !this.p1.stunned) this._applyRecover(this.p1, a1, this.p2)
     if (ac2 === ACLASS.RECOVER && !this.p2.stunned) this._applyRecover(this.p2, a2, this.p1)
+
+    // ── Phase 4b: NULL character abilities (e.g. Andile IGNITE, STATIC) ──────
+    if (ac1 === ACLASS.NULL && !this.p1.stunned) this._applyNullAbility(this.p1, a1, this.p2)
+    if (ac2 === ACLASS.NULL && !this.p2.stunned) this._applyNullAbility(this.p2, a2, this.p1)
 
     // ── Ult charge ───────────────────────────────────────────────────────────
     // +2.5% per step passively
@@ -529,6 +650,9 @@ class ClocksOutGame {
     // ── Fury tick ────────────────────────────────────────────────────────────
     if (this.p1.fury > 0) { this.p1.fury--; if (this.p1.fury === 0) this.p1.ult = 0 }
     if (this.p2.fury > 0) { this.p2.fury--; if (this.p2.fury === 0) this.p2.ult = 0 }
+    // ── Electrify tick ───────────────────────────────────────────────────────
+    if (this.p1.electrify > 0) this.p1.electrify--
+    if (this.p2.electrify > 0) this.p2.electrify--
 
     if (this.p1.lastDamage > 0) this.p1.flash = 350
     if (this.p2.lastDamage > 0) this.p2.flash = 350
@@ -574,23 +698,48 @@ class ClocksOutGame {
   }
 
   _applyMove(f, action, opponent) {
+    const prevTile = f.tile
     if (action === ACTION.LEFT)  f.tile -= 1
     if (action === ACTION.RIGHT) f.tile += 1
     if (action === ACTION.ENGAGE && f.charDef?.id === 'takashi') {
-      // Move 2 tiles toward opponent, clamped to walls.
-      // Intentionally allows landing on opponent's tile — Phase 2 collision
-      // gives the standard 50/50 resolution from there.
       const dir  = opponent.tile > f.tile ? 1 : -1
       f.tile += dir * 2
-      // Wall clamp only — no opponent avoidance
       f.tile = Math.max(0, Math.min(TILE_COUNT - 1, f.tile))
     }
+    // Lia PULL is ATTACK class — handled in _applyAttack
+    if (action === ACTION.ENGAGE && f.charDef?.id === 'andile') {
+      // WARP: teleport to tile beside opponent, biased toward centre (tile 4)
+      const et = opponent.tile
+      const centre = Math.floor(TILE_COUNT / 2)  // 4
+      let land
+      if (et === 0)                  land = 1
+      else if (et === TILE_COUNT-1)  land = TILE_COUNT - 2
+      else if (et === centre)        land = Math.random() < 0.5 ? centre - 1 : centre + 1
+      else if (et < centre)          land = et + 1  // bias toward centre (right)
+      else                           land = et - 1  // bias toward centre (left)
+      // If landing tile is occupied by opponent, fallback to other side
+      if (land === opponent.tile) land = et < centre ? et - 1 : et + 1
+      f.tile = Math.max(0, Math.min(TILE_COUNT - 1, land))
+    }
+    if (action === ACTION.RECOVER && f.charDef?.id === 'andile') {
+      // BLINK: teleport to tile 4, or 3/5 if opponent is on 4
+      const centre = Math.floor(TILE_COUNT / 2)
+      let land = centre
+      if (opponent.tile === centre) land = Math.random() < 0.5 ? centre - 1 : centre + 1
+      f.tile = land
+    }
+    if (f.tile !== prevTile) f.movedThisStep = true
   }
 
   _applyAttack(attacker, action, defender) {
     if (action === ACTION.JAB) {
       if (Math.abs(attacker.tile - defender.tile) <= 1) {
-        this._dealDamage(attacker, defender, 1)
+        const base = attacker.electrify > 0 ? 2 : 1  // electrify +1 jab damage
+        this._dealDamage(attacker, defender, base)
+        // Andile passive: JAB always marks (even if blocked)
+        if (attacker.charDef?.id === 'andile') {
+          defender.staticMarked = true
+        }
       }
     }
     if (action === ACTION.HEAVY) {
@@ -598,7 +747,86 @@ class ClocksOutGame {
         this._dealDamage(attacker, defender, 2)
       }
     }
-    // Future character attack abilities go here
+    // Lia CON_ATK — CHAIN: poison for 3 if opponent not moving; else whiff
+    if (action === ACTION.CON_ATK && attacker.charDef?.id === 'lia') {
+      if (Math.abs(attacker.tile - defender.tile) <= 1) {
+        const oppAC = attacker === this.p1 ? this._ac2 : this._ac1
+        if (oppAC !== ACLASS.MOVE) {
+          defender.poisoned = Math.max(defender.poisoned, 3)
+          attacker.chargeUlt(5)
+        } else {
+          // Whiff — lose next slot
+          this._forceSlot(attacker, ACTION.FORCED_WAIT)
+        }
+      }
+    }
+
+    // Lia SP_ATK — DEBUFF: 4 tile range, stun next slot if opponent declared MOVE
+    if (action === ACTION.SP_ATK && attacker.charDef?.id === 'lia') {
+      if (Math.abs(attacker.tile - defender.tile) <= 4) {
+        const oppAC = attacker === this.p1 ? this._ac2 : this._ac1
+        if (oppAC === ACLASS.MOVE) {
+          this._forceSlot(defender, ACTION.FORCED_WAIT)
+          attacker.chargeUlt(5)
+        }
+        // If opponent wasn't moving, DEBUFF does nothing (still parryable)
+      }
+    }
+
+    // Lia ENGAGE — PULL: 4 tile range, drag opponent 1 tile toward Lia
+    if (action === ACTION.ENGAGE && attacker.charDef?.id === 'lia') {
+      if (Math.abs(attacker.tile - defender.tile) <= 4) {
+        const prevTile = defender.tile
+        const dir = attacker.tile > defender.tile ? 1 : -1  // toward Lia
+        const target = Math.max(0, Math.min(TILE_COUNT - 1, defender.tile + dir))
+        // Never pull onto Lia's own tile
+        if (target !== attacker.tile) {
+          defender.tile = target
+          if (defender.tile !== prevTile) {
+            defender.movedThisStep = true
+            // Passive damage if pulled within 1 tile
+            if (Math.abs(attacker.tile - defender.tile) <= 1) {
+              defender.hp        -= 1
+              defender.lastDamage += 1
+              attacker.chargeUlt(5)
+            }
+          }
+        }
+      }
+    }
+
+  }
+
+  // Handles NULL-class character abilities that fire after attacks/recover
+  _applyNullAbility(attacker, action, defender) {
+    // Andile SP_ATK — STATIC: 2 tile range, apply mark
+    if (action === ACTION.SP_ATK && attacker.charDef?.id === 'andile') {
+      if (Math.abs(attacker.tile - defender.tile) <= 2) {
+        defender.staticMarked = true
+        attacker.chargeUlt(5)
+      }
+    }
+    // Andile CON_ATK — IGNITE: 2 tile range, consume mark, deal 1 unblockable dmg, stun next slot
+    if (action === ACTION.CON_ATK && attacker.charDef?.id === 'andile') {
+      if (defender.staticMarked && Math.abs(attacker.tile - defender.tile) <= 2) {
+        defender.staticMarked = false
+        defender.hp        -= 1
+        defender.lastDamage += 1
+        attacker.chargeUlt(5)
+        this._forceSlot(defender, ACTION.FORCED_WAIT)
+      }
+    }
+  }
+
+  // Forces a slot in fighter's current or next queue to a given action
+  _forceSlot(fighter, action) {
+    const nextIdx = this.resolveIdx  // resolveIdx not yet incremented at call time
+    if (nextIdx < this.slots) {
+      fighter.queue[nextIdx] = action
+    } else {
+      if (!fighter.nextQueuePrefix.length) fighter.nextQueuePrefix = [action]
+      else fighter.nextQueuePrefix[0] = action
+    }
   }
 
   _resolveParry(parrier, opponent, oppActionClass) {
@@ -611,20 +839,12 @@ class ClocksOutGame {
       parrier.chargeUlt(5)
     } else {
       // Parry whiffed: force next slot to WAIT
-      const nextIdx = this.resolveIdx + 1  // resolveIdx not yet incremented
-      if (nextIdx < this.slots) {
-        parrier.queue[nextIdx] = ACTION.FORCED_WAIT
-      } else {
-        parrier.nextQueuePrefix = [ACTION.FORCED_WAIT]
-      }
+      this._forceSlot(parrier, ACTION.FORCED_WAIT)
     }
   }
 
   _applyRecover(fighter, action, opponent) {
-    if (action === ACTION.ULT && fighter.ult >= 100) {
-      fighter.charDef?.onUlt(fighter, opponent, this)
-      fighter.ult = 0
-    }
+    // ULT is handled in Phase 3a (post-movement)
     if (action === ACTION.RECOVER) {
       fighter.charDef?.onResolveStep(fighter, action, opponent, this)
     }
@@ -1221,6 +1441,8 @@ class ClocksOutGame {
         ctx.fillText(text, 0, badgeY); badgeY += 9
       }
       if (f.fury       > 0) badge(`FURY ${f.fury}`,       C.ult)
+      if (f.electrify  > 0) badge(`ELEC ${f.electrify}`,  '#66ddff')
+      if (f.staticMarked)   badge('MARKED',               '#aaddff')
       if (f.stunned    > 0) badge(`STUN ${f.stunned}`,   '#ddcc44')
       if (f.poisoned   > 0) badge(`PSND ${f.poisoned}`,  '#88dd66')
       if (f.restrained > 0) badge(`REST ${f.restrained}`, '#cc88ee')
