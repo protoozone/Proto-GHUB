@@ -24,20 +24,62 @@ const P2_START   = TILE_COUNT - 2
 const BTN_COUNT  = 10
 
 const ACTION = {
-  WAIT:    0,
-  JAB:     1,
-  LEFT:    2,
-  RIGHT:   3,
-  BLOCK:   4,
-  SP_ATK:  5,
-  CON_ATK: 6,
-  ENGAGE:  7,
-  RECOVER: 8,
-  ULT:     9,
+  WAIT:       0,
+  JAB:        1,
+  LEFT:       2,
+  RIGHT:      3,
+  BLOCK:      4,
+  SP_ATK:     5,
+  CON_ATK:    6,
+  ENGAGE:     7,
+  RECOVER:    8,
+  ULT:        9,
+  // Virtual actions (game-inserted, not player-selectable)
+  CHARGE:     10,   // Takashi unique atk part 1
+  HEAVY:      11,   // Takashi unique atk part 2 (2 dmg)
+  FORCED_WAIT:12,   // Takashi parry penalty / carry-over
 }
 
-const BTN_LABEL  = ['WAIT','JAB','LEFT','RIGHT','BLOCK','SP.ATK','CON.ATK','ENGAGE','RECOVER','ULT']
-const ACTION_NAME = ['WAIT','JAB','LEFT','RIGHT','BLOCK','SP.ATK','CON.ATK','ENGAGE','RECOVER','ULT']
+const BTN_LABEL   = ['WAIT','JAB','LEFT','RIGHT','BLOCK','SP.ATK','CON.ATK','ENGAGE','RECOVER','ULT']
+const ACTION_NAME  = ['WAIT','JAB','LEFT','RIGHT','BLOCK','SP.ATK','CON.ATK','ENGAGE','RECOVER','ULT',
+                      'CHARGE','HEAVY','WAIT']  // indices 10,11,12
+
+// Action classes — used for resolution ordering and DEFEND precheck logic
+const ACLASS = {
+  NULL:    'NULL',      // WAIT, CHARGE, FORCED_WAIT
+  MOVE:    'MOVE',      // LEFT, RIGHT, ENGAGE
+  ATTACK:  'ATTACK',    // JAB, HEAVY
+  DEFEND:  'DEFEND',    // BLOCK, PARRY (CON_ATK)
+  RECOVER: 'RECOVER',   // RECOVER, ULT
+  PUSH:    'PUSH',
+  PASSIVE: 'PASSIVE',
+}
+
+function actionClass(action, charId) {
+  switch (action) {
+    case ACTION.WAIT:       return ACLASS.NULL
+    case ACTION.CHARGE:     return ACLASS.NULL
+    case ACTION.FORCED_WAIT:return ACLASS.NULL
+    case ACTION.LEFT:       return ACLASS.MOVE
+    case ACTION.RIGHT:      return ACLASS.MOVE
+    case ACTION.JAB:        return ACLASS.ATTACK
+    case ACTION.HEAVY:      return ACLASS.ATTACK
+    case ACTION.BLOCK:      return ACLASS.DEFEND
+    // Character-specific
+    case ACTION.SP_ATK:
+      if (charId === 'takashi') return ACLASS.NULL   // CHARGE step
+      return ACLASS.ATTACK
+    case ACTION.CON_ATK:
+      if (charId === 'takashi') return ACLASS.DEFEND  // PARRY
+      return ACLASS.ATTACK
+    case ACTION.ENGAGE:
+      if (charId === 'takashi') return ACLASS.MOVE    // DASH
+      return ACLASS.MOVE
+    case ACTION.RECOVER:    return ACLASS.RECOVER
+    case ACTION.ULT:        return ACLASS.RECOVER
+    default:                return ACLASS.NULL
+  }
+}
 
 const P1_KEY_MAP = {
   'Digit0':0,'Digit1':1,'Digit2':2,'Digit3':3,'Digit4':4,
@@ -104,7 +146,40 @@ const CHARACTERS = [
     name: 'TAKASHI', // RYU
     colour: '#e8954a',
     desc: 'Street Fighter. Self Healing High Damage.',
-    ...DUMMY_MOVESET,
+    abilityNames: { 5:'CHARGE', 6:'PARRY', 7:'DASH', 8:'CLEANSE' },
+    ultName: 'FURY',
+    info: [
+      'PASSIVE: Every 8 actions resolved, heals 1HP (max 10).',
+      'SP.ATK (5) — CHARGE + HEAVY: Fills 2 slots. Slot 1 = CHARGE (wait). Slot 2 = HEAVY (2 dmg, range 1). If only 1 slot free, HEAVY carries to next queue slot 0.',
+      'CON.ATK (6) — PARRY: If opponent attacks this step, take no damage and deal 1 dmg instead. If opponent does not attack, lose your next slot (forced WAIT). If at end of queue, first slot of next queue becomes WAIT.',
+      'ENGAGE (7) — DASH: Move 2 tiles toward opponent. If already 1 tile away, jump to the other side. If 1 tile away and opponent is at wall, does nothing.',
+      'RECOVER (8) — CLEANSE: Remove all status effects. If none present, gain 5% ult charge.',
+      'ULT — FURY: Enter FURY for 4 actions. All outgoing damage doubled. Ult is locked at 0% during FURY and resets to 0 when it ends.',
+    ],
+    onSequenceStart(fighter, game) {
+      // Nothing to do at sequence start
+    },
+    onResolveStep(fighter, action, opponent, game) {
+      // Passive: heal 1HP every 8 actions (fires after actionCount increments)
+      if (game.actionCount > 0 && game.actionCount % 8 === 0) {
+        fighter.hp = Math.min(MAX_HP, fighter.hp + 1)
+      }
+      // RECOVER / CLEANSE — called via _applyRecover
+      if (action === ACTION.RECOVER) {
+        const hasStatus = fighter.stunned > 0 || fighter.poisoned > 0 || fighter.restrained > 0
+        if (hasStatus) {
+          fighter.stunned = 0; fighter.poisoned = 0; fighter.restrained = 0
+        } else {
+          fighter.chargeUlt(5)
+        }
+      }
+      // CHARGE, HEAVY, PARRY, DASH, FURY — all handled by the engine
+    },
+    onUlt(fighter, opponent, game) {
+      // Enter FURY for 4 actions
+      fighter.fury = 4
+      fighter.ult  = 0  // reset immediately; chargeUlt will be locked by fury
+    },
   },
   {
     id: 'lia',
@@ -144,26 +219,32 @@ class Fighter {
     this.blocking    = false
     this.lastDamage  = 0
     this.flash       = 0
-    this.stunned     = 0
-    this.poisoned    = 0
-    this.restrained  = 0
+    this.stunned          = 0
+    this.poisoned         = 0
+    this.restrained       = 0
+    this.fury             = 0   // actions remaining in fury (Takashi ult)
+    this.nextQueuePrefix  = []  // actions prepended to next queue (carry-over)
+    this.parrying         = false  // DEFEND precheck state
   }
 
   get colour() { return this.charDef?.colour ?? (this.id === 1 ? C.p1 : C.p2) }
   get name()   { return this.charDef?.name   ?? `P${this.id}` }
 
   fullReset() {
-    this.tile        = this.id === 1 ? P1_START : P2_START
-    this.hp          = MAX_HP
-    this.facingRight = this.id === 1
-    this.queue       = []
-    this.locked      = false
-    this.blocking    = false
-    this.lastDamage  = 0
-    this.flash       = 0
-    this.stunned     = 0
-    this.poisoned    = 0
-    this.restrained  = 0
+    this.tile             = this.id === 1 ? P1_START : P2_START
+    this.hp               = MAX_HP
+    this.facingRight      = this.id === 1
+    this.queue            = []
+    this.locked           = false
+    this.blocking         = false
+    this.lastDamage       = 0
+    this.flash            = 0
+    this.stunned          = 0
+    this.poisoned         = 0
+    this.restrained       = 0
+    this.fury             = 0
+    this.nextQueuePrefix  = []
+    this.parrying         = false
     // ult persists
   }
 
@@ -174,15 +255,23 @@ class Fighter {
     this.lastDamage = 0
   }
 
-  chargeUlt(pct) { this.ult = Math.min(100, this.ult + pct) }
+  chargeUlt(pct) {
+    if (this.fury > 0) return  // fury locks ult at 0
+    this.ult = Math.min(100, this.ult + pct)
+  }
 }
 
 // ── Layout helper ─────────────────────────────────────────────────────────────
 // Stack (top→bottom):
 //   P2 btn strip | space | P2 timer | P2 queue | arena | P1 queue | P1 timer | space | P1 btn strip
 function computeLayout(W, H, slots) {
-  const btnH   = Math.max(48, Math.min(H * 0.17, 76))
-  const btnW   = W / BTN_COUNT
+  const mobile  = W < 600
+  const btnRows = mobile ? 2 : 1
+  const btnH    = mobile
+    ? Math.max(64, Math.min(H * 0.2, 100))   // two rows — taller total strip
+    : Math.max(48, Math.min(H * 0.17, 76))   // one row
+  const btnRowH = btnH / btnRows              // height of each button row
+  const btnW    = mobile ? W / 5 : W / BTN_COUNT  // 5 wide on mobile, 10 on desktop
   const space  = Math.max(6, H * 0.02)
   const timerH = Math.max(14, H * 0.03)
   const hudH   = Math.max(20, H * 0.045)
@@ -217,7 +306,7 @@ function computeLayout(W, H, slots) {
 
   return {
     W, H,
-    btnH, btnW, space,
+    mobile, btnRows, btnH, btnRowH, btnW, space,
     timerH, hudH, pad,
     slotSz, slotGap, queueW, queueH,
     arenaH, arenaY, tileW,
@@ -244,6 +333,7 @@ class ClocksOutGame {
     this.p2 = new Fighter(2, this.slots)
 
     this.charSelectIdx = [0, 0]
+    this.charInfoOpen  = false  // showing ability popup on char select
 
     this.phase        = PHASE.CHAR_P1
     this.timeLeft     = 0
@@ -296,7 +386,12 @@ class ClocksOutGame {
   _confirmChar(playerIdx, charIdx) {
     const f = playerIdx === 0 ? this.p1 : this.p2
     f.charDef = CHARACTERS[charIdx]
-    this.phase = playerIdx === 0 ? PHASE.CHAR_P2 : (this._startMatch(), PHASE.INPUT)
+    this.charInfoOpen = false
+    if (playerIdx === 0) {
+      this.phase = PHASE.CHAR_P2
+    } else {
+      this._startMatch()
+    }
   }
 
   // ── Match / sequence lifecycle ───────────────────────────────────────────────
@@ -309,8 +404,16 @@ class ClocksOutGame {
   }
 
   _startSequence() {
-    this.p1.clearSequence()
-    this.p2.clearSequence()
+    // Apply any carry-over actions from previous sequence
+    const applyPrefix = (f) => {
+      f.clearSequence()
+      if (f.nextQueuePrefix.length > 0) {
+        f.queue = [...f.nextQueuePrefix]
+        f.nextQueuePrefix = []
+      }
+    }
+    applyPrefix(this.p1)
+    applyPrefix(this.p2)
     this.log      = []
     this.phase    = PHASE.INPUT
     this.timeLeft = this.timerS * 1000
@@ -335,49 +438,102 @@ class ClocksOutGame {
     const i  = this.resolveIdx
     const a1 = this.p1.queue[i] ?? ACTION.WAIT
     const a2 = this.p2.queue[i] ?? ACTION.WAIT
+    const c1 = this.p1.charDef?.id
+    const c2 = this.p2.charDef?.id
+    const ac1 = actionClass(a1, c1)
+    const ac2 = actionClass(a2, c2)
 
-    this.p1.blocking   = false; this.p2.blocking   = false
-    this.p1.lastDamage = 0;     this.p2.lastDamage = 0
+    // Reset per-step state
+    this.p1.blocking  = false; this.p2.blocking  = false
+    this.p1.parrying  = false; this.p2.parrying  = false
+    this.p1.lastDamage = 0;    this.p2.lastDamage = 0
 
-    if (a1 === ACTION.BLOCK) this.p1.blocking = true
-    if (a2 === ACTION.BLOCK) this.p2.blocking = true
+    // ── Phase 0: DEFEND precheck ─────────────────────────────────────────────
+    if (ac1 === ACLASS.DEFEND) {
+      if (a1 === ACTION.BLOCK)   this.p1.blocking = true
+      if (a1 === ACTION.CON_ATK) this.p1.parrying = true
+    }
+    if (ac2 === ACLASS.DEFEND) {
+      if (a2 === ACTION.BLOCK)   this.p2.blocking = true
+      if (a2 === ACTION.CON_ATK) this.p2.parrying = true
+    }
 
-    // Phase 1: movement
-    if (!this.p1.stunned && !this.p1.restrained) this._applyMove(this.p1, a1)
-    if (!this.p2.stunned && !this.p2.restrained) this._applyMove(this.p2, a2)
+    // ── Phase 1: MOVE ────────────────────────────────────────────────────────
+    if (!this.p1.stunned && !this.p1.restrained && ac1 === ACLASS.MOVE) {
+      this._applyMove(this.p1, a1, this.p2)
+    }
+    if (!this.p2.stunned && !this.p2.restrained && ac2 === ACLASS.MOVE) {
+      this._applyMove(this.p2, a2, this.p1)
+    }
 
     this.p1.tile = Math.max(0, Math.min(TILE_COUNT - 1, this.p1.tile))
     this.p2.tile = Math.max(0, Math.min(TILE_COUNT - 1, this.p2.tile))
 
-    // Collision: 50/50, loser pushed toward their start side
+    // ── Phase 2: Collision ───────────────────────────────────────────────────
     if (this.p1.tile === this.p2.tile) {
-      if (Math.random() < 0.5) this.p2.tile = Math.min(TILE_COUNT - 1, this.p2.tile + 1)
-      else                     this.p1.tile = Math.max(0, this.p1.tile - 1)
+      // Determine push directions: P1 pushes left (toward 0), P2 pushes right (toward max)
+      const p1CanLeft  = this.p1.tile > 0
+      const p2CanRight = this.p2.tile < TILE_COUNT - 1
+      if (p1CanLeft && p2CanRight) {
+        // Both directions free — 50/50
+        if (Math.random() < 0.5) this.p2.tile++
+        else                     this.p1.tile--
+      } else if (p1CanLeft) {
+        // P2 is against right wall — P1 must go left
+        this.p1.tile--
+      } else if (p2CanRight) {
+        // P1 is against left wall — P2 must go right
+        this.p2.tile++
+      }
+      // If neither can move (arena width 1) — shouldn't happen with TILE_COUNT 9
     }
 
-    // Update facing
+    // Update facing after movement
     if (this.p1.tile !== this.p2.tile) {
       this.p1.facingRight = this.p1.tile < this.p2.tile
       this.p2.facingRight = this.p2.tile < this.p1.tile
     }
 
-    // Phase 2: attacks
-    if (!this.p1.stunned) this._applyAction(this.p1, a1, this.p2)
-    if (!this.p2.stunned) this._applyAction(this.p2, a2, this.p1)
+    // ── Phase 3: ATTACK ──────────────────────────────────────────────────────
+    if (!this.p1.stunned && ac1 === ACLASS.ATTACK) {
+      this._applyAttack(this.p1, a1, this.p2)
+    }
+    if (!this.p2.stunned && ac2 === ACLASS.ATTACK) {
+      this._applyAttack(this.p2, a2, this.p1)
+    }
+
+    // DEFEND resolution: check if a parry was triggered or whiffed
+    if (this.p1.parrying) this._resolveParry(this.p1, this.p2, ac2)
+    if (this.p2.parrying) this._resolveParry(this.p2, this.p1, ac1)
 
     this.p1.hp = Math.max(0, this.p1.hp)
     this.p2.hp = Math.max(0, this.p2.hp)
 
-    // Ult charge
-    if (this.p2.lastDamage > 0) { this.p1.chargeUlt(2.5); this.p2.chargeUlt(2.5) }
-    if (this.p1.lastDamage > 0) { this.p2.chargeUlt(2.5); this.p1.chargeUlt(2.5) }
-    if (this.p1.blocking && this.p2.lastDamage > 0) this.p1.chargeUlt(5)
-    if (this.p2.blocking && this.p1.lastDamage > 0) this.p2.chargeUlt(5)
+    // ── Phase 4: RECOVER ─────────────────────────────────────────────────────
+    if (ac1 === ACLASS.RECOVER && !this.p1.stunned) this._applyRecover(this.p1, a1, this.p2)
+    if (ac2 === ACLASS.RECOVER && !this.p2.stunned) this._applyRecover(this.p2, a2, this.p1)
+
+    // ── Ult charge ───────────────────────────────────────────────────────────
+    // +2.5% per step passively
+    this.p1.chargeUlt(2.5)
+    this.p2.chargeUlt(2.5)
+    // +5% on dealing damage
+    if (this.p2.lastDamage > 0) this.p1.chargeUlt(5)
+    if (this.p1.lastDamage > 0) this.p2.chargeUlt(5)
+    // +5% clean block (attack came in, defender blocked, took 0)
+    const wasAttack1 = ac1 === ACLASS.ATTACK
+    const wasAttack2 = ac2 === ACLASS.ATTACK
+    if (this.p1.blocking && this.p1.lastDamage === 0 && wasAttack2) this.p1.chargeUlt(5)
+    if (this.p2.blocking && this.p2.lastDamage === 0 && wasAttack1) this.p2.chargeUlt(5)
+
+    // ── Fury tick ────────────────────────────────────────────────────────────
+    if (this.p1.fury > 0) { this.p1.fury--; if (this.p1.fury === 0) this.p1.ult = 0 }
+    if (this.p2.fury > 0) { this.p2.fury--; if (this.p2.fury === 0) this.p2.ult = 0 }
 
     if (this.p1.lastDamage > 0) this.p1.flash = 350
     if (this.p2.lastDamage > 0) this.p2.flash = 350
 
-    // Status tick
+    // ── Status tick ──────────────────────────────────────────────────────────
     const tickStatus = (f) => {
       if (f.stunned    > 0) f.stunned--
       if (f.restrained > 0) f.restrained--
@@ -385,11 +541,12 @@ class ClocksOutGame {
     }
     tickStatus(this.p1); tickStatus(this.p2)
 
+    // ── Passive hooks ────────────────────────────────────────────────────────
     this.p1.charDef?.onResolveStep(this.p1, a1, this.p2, this)
     this.p2.charDef?.onResolveStep(this.p2, a2, this.p1, this)
     this.actionCount++
 
-    let entry = `${i+1}  P1:${ACTION_NAME[a1]}  P2:${ACTION_NAME[a2]}`
+    let entry = `${i+1}  P1:${ACTION_NAME[a1] ?? a1}  P2:${ACTION_NAME[a2] ?? a2}`
     if (this.p1.lastDamage) entry += `  ‹P1 -${this.p1.lastDamage}›`
     if (this.p2.lastDamage) entry += `  ‹P2 -${this.p2.lastDamage}›`
     this.log.push(entry)
@@ -405,26 +562,71 @@ class ClocksOutGame {
     }
   }
 
-  _applyMove(f, action) {
-    // Movement is always in absolute canvas terms: LEFT = tile--, RIGHT = tile++
-    // P2's input is already flipped at input time via p2Action()
-    if (action === ACTION.LEFT)  f.tile -= 1
-    if (action === ACTION.RIGHT) f.tile += 1
+  // Deals damage from attacker to defender, respecting parry immunity and block
+  _dealDamage(attacker, defender, baseDmg) {
+    if (defender.parrying) return 0  // parry makes you immune to attacks
+    const fury = attacker.fury > 0 ? 2 : 1
+    const dmg  = Math.max(0, baseDmg * fury - (defender.blocking ? 1 : 0))
+    defender.hp        -= dmg
+    defender.lastDamage += dmg
+    if (dmg > 0) attacker.chargeUlt(5)
+    return dmg
   }
 
-  _applyAction(attacker, action, defender) {
+  _applyMove(f, action, opponent) {
+    if (action === ACTION.LEFT)  f.tile -= 1
+    if (action === ACTION.RIGHT) f.tile += 1
+    if (action === ACTION.ENGAGE && f.charDef?.id === 'takashi') {
+      // Move 2 tiles toward opponent, clamped to walls.
+      // Intentionally allows landing on opponent's tile — Phase 2 collision
+      // gives the standard 50/50 resolution from there.
+      const dir  = opponent.tile > f.tile ? 1 : -1
+      f.tile += dir * 2
+      // Wall clamp only — no opponent avoidance
+      f.tile = Math.max(0, Math.min(TILE_COUNT - 1, f.tile))
+    }
+  }
+
+  _applyAttack(attacker, action, defender) {
     if (action === ACTION.JAB) {
       if (Math.abs(attacker.tile - defender.tile) <= 1) {
-        const dmg = Math.max(0, 1 - (defender.blocking ? 1 : 0))
-        defender.hp -= dmg; defender.lastDamage += dmg
+        this._dealDamage(attacker, defender, 1)
       }
     }
-    if (action === ACTION.ULT && attacker.ult >= 100) {
-      attacker.charDef?.onUlt(attacker, defender, this)
-      attacker.ult = 0
+    if (action === ACTION.HEAVY) {
+      if (Math.abs(attacker.tile - defender.tile) <= 1) {
+        this._dealDamage(attacker, defender, 2)
+      }
     }
-    if (action >= ACTION.SP_ATK && action <= ACTION.RECOVER) {
-      attacker.charDef?.onResolveStep(attacker, action, defender, this)
+    // Future character attack abilities go here
+  }
+
+  _resolveParry(parrier, opponent, oppActionClass) {
+    if (oppActionClass === ACLASS.ATTACK) {
+      // Parry triggered: immune (already prevented by _dealDamage parry check)
+      // Deal parry damage back
+      const parryDmg = parrier.fury > 0 ? 2 : 1
+      opponent.hp        -= parryDmg
+      opponent.lastDamage += parryDmg
+      parrier.chargeUlt(5)
+    } else {
+      // Parry whiffed: force next slot to WAIT
+      const nextIdx = this.resolveIdx + 1  // resolveIdx not yet incremented
+      if (nextIdx < this.slots) {
+        parrier.queue[nextIdx] = ACTION.FORCED_WAIT
+      } else {
+        parrier.nextQueuePrefix = [ACTION.FORCED_WAIT]
+      }
+    }
+  }
+
+  _applyRecover(fighter, action, opponent) {
+    if (action === ACTION.ULT && fighter.ult >= 100) {
+      fighter.charDef?.onUlt(fighter, opponent, this)
+      fighter.ult = 0
+    }
+    if (action === ACTION.RECOVER) {
+      fighter.charDef?.onResolveStep(fighter, action, opponent, this)
     }
   }
 
@@ -450,17 +652,23 @@ class ClocksOutGame {
   _onKey(e) {
     const code = e.code
 
-    if (this.phase === PHASE.CHAR_P1) {
-      if (code === 'ArrowLeft')  { this.charSelectIdx[0] = (this.charSelectIdx[0] - 1 + CHARACTERS.length) % CHARACTERS.length; e.preventDefault() }
-      if (code === 'ArrowRight') { this.charSelectIdx[0] = (this.charSelectIdx[0] + 1) % CHARACTERS.length; e.preventDefault() }
-      if (code === 'Enter')      { this._confirmChar(0, this.charSelectIdx[0]); e.preventDefault() }
-      return
-    }
-    if (this.phase === PHASE.CHAR_P2) {
-      if (code === 'ArrowLeft')  { this.charSelectIdx[1] = (this.charSelectIdx[1] - 1 + CHARACTERS.length) % CHARACTERS.length; e.preventDefault() }
-      if (code === 'ArrowRight') { this.charSelectIdx[1] = (this.charSelectIdx[1] + 1) % CHARACTERS.length; e.preventDefault() }
-      if (code === 'Enter')      { this._confirmChar(1, this.charSelectIdx[1]); e.preventDefault() }
-      if (code === 'Backspace')  { this.phase = PHASE.CHAR_P1; e.preventDefault() }
+    if (this.phase === PHASE.CHAR_P1 || this.phase === PHASE.CHAR_P2) {
+      const pIdx = this.phase === PHASE.CHAR_P1 ? 0 : 1
+      if (this.charInfoOpen) {
+        // Info popup open: Enter confirms, Escape/Backspace closes
+        if (code === 'Enter') { this._confirmChar(pIdx, this.charSelectIdx[pIdx]); e.preventDefault() }
+        if (code === 'Escape' || code === 'Backspace') { this.charInfoOpen = false; e.preventDefault() }
+        return
+      }
+      if (code === 'ArrowLeft')  { this.charSelectIdx[pIdx] = (this.charSelectIdx[pIdx] - 1 + CHARACTERS.length) % CHARACTERS.length; e.preventDefault() }
+      if (code === 'ArrowRight') { this.charSelectIdx[pIdx] = (this.charSelectIdx[pIdx] + 1) % CHARACTERS.length; e.preventDefault() }
+      if (code === 'Enter') {
+        // First Enter: open info if char has info, else confirm directly
+        const char = CHARACTERS[this.charSelectIdx[pIdx]]
+        if (char.info) { this.charInfoOpen = true } else { this._confirmChar(pIdx, this.charSelectIdx[pIdx]) }
+        e.preventDefault()
+      }
+      if (code === 'Backspace' && pIdx === 1) { this.phase = PHASE.CHAR_P1; this.charInfoOpen = false; e.preventDefault() }
       return
     }
     if (this.phase === PHASE.SETOVER) {
@@ -492,8 +700,27 @@ class ClocksOutGame {
     // Character select: tap a card
     if (this.phase === PHASE.CHAR_P1 || this.phase === PHASE.CHAR_P2) {
       const pIdx = this.phase === PHASE.CHAR_P1 ? 0 : 1
-      const hit  = this._charSelectHitTest(cx, cy, W, H)
-      if (hit !== null) { this.charSelectIdx[pIdx] = hit; this._confirmChar(pIdx, hit) }
+      if (this.charInfoOpen) {
+        // Tap anywhere on popup to confirm, tap outside to close
+        const pw = Math.min(W * 0.9, 420), ph = Math.min(H * 0.75, 500)
+        const px = (W - pw) / 2, py = (H - ph) / 2
+        if (cx >= px && cx <= px + pw && cy >= py && cy <= py + ph) {
+          this._confirmChar(pIdx, this.charSelectIdx[pIdx])
+        } else {
+          this.charInfoOpen = false
+        }
+        return
+      }
+      const hit = this._charSelectHitTest(cx, cy, W, H)
+      if (hit !== null) {
+        if (hit === this.charSelectIdx[pIdx]) {
+          // Already selected — open info or confirm if no info
+          const char = CHARACTERS[hit]
+          if (char.info) { this.charInfoOpen = true } else { this._confirmChar(pIdx, hit) }
+        } else {
+          this.charSelectIdx[pIdx] = hit
+        }
+      }
       return
     }
 
@@ -507,26 +734,58 @@ class ClocksOutGame {
 
     const L = computeLayout(W, H, this.slots)
 
-    // P2 strip: top, buttons are mirrored (btn 9 on left, btn 0 on right)
+    // P2 strip: top (rotated 180° visually)
     if (cy >= 0 && cy < L.btnH) {
-      // Mirror: tap at cx maps to button (BTN_COUNT - 1 - floor(cx/btnW))
-      const btnIdx = BTN_COUNT - 1 - Math.floor(cx / L.btnW)
-      if (btnIdx >= 0 && btnIdx < BTN_COUNT) this._pushAction(this.p2, p2Action(btnIdx))
+      const btnIdx = this._btnHitTest(L, cx, cy, 0, true)
+      if (btnIdx !== null) this._pushAction(this.p2, p2Action(btnIdx))
       return
     }
 
-    // P1 strip: bottom, normal order
+    // P1 strip: bottom
     if (cy >= H - L.btnH && cy < H) {
-      const btnIdx = Math.floor(cx / L.btnW)
-      if (btnIdx >= 0 && btnIdx < BTN_COUNT) this._pushAction(this.p1, btnIdx)
+      const btnIdx = this._btnHitTest(L, cx, cy, H - L.btnH, false)
+      if (btnIdx !== null) this._pushAction(this.p1, btnIdx)
       return
+    }
+  }
+
+  // Maps a canvas tap (cx, cy) within a button strip to a button index 0-9.
+  // stripY = top of the strip in canvas coords (before any rotation).
+  // For P2 (isP2=true) the strip is rotated 180°, so we mirror both axes.
+  _btnHitTest(L, cx, cy, stripY, isP2) {
+    const { W, btnH, btnRowH, btnW, mobile } = L
+    // Transform click into strip-local coords, accounting for rotation
+    let lx = isP2 ? W - cx : cx
+    let ly = isP2 ? btnH - (cy - stripY) : cy - stripY
+    if (ly < 0 || ly >= btnH) return null
+    if (lx < 0 || lx >= W)   return null
+    if (mobile) {
+      const col_ = Math.floor(lx / btnW)
+      const row_ = Math.floor(ly / btnRowH)
+      const idx  = row_ * 5 + col_
+      return (idx >= 0 && idx < BTN_COUNT) ? idx : null
+    } else {
+      const idx = Math.floor(lx / btnW)
+      return (idx >= 0 && idx < BTN_COUNT) ? idx : null
     }
   }
 
   _pushAction(fighter, actionId) {
     if (fighter.queue.length >= this.slots) return
-    fighter.queue.push(actionId)
-    if (fighter.queue.length === this.slots) this._lockIn(fighter)
+    // Takashi SP_ATK inserts CHARGE + HEAVY as two slots
+    if (actionId === ACTION.SP_ATK && fighter.charDef?.id === 'takashi') {
+      const free = this.slots - fighter.queue.length
+      if (free >= 2) {
+        fighter.queue.push(ACTION.CHARGE, ACTION.HEAVY)
+      } else if (free === 1) {
+        fighter.queue.push(ACTION.CHARGE)
+        fighter.nextQueuePrefix = [ACTION.HEAVY]
+      }
+      // If no free slots, ignore
+    } else {
+      fighter.queue.push(actionId)
+    }
+    if (fighter.queue.length >= this.slots) this._lockIn(fighter)
   }
 
   _undoAction(fighter) {
@@ -595,60 +854,69 @@ class ClocksOutGame {
 
   // ── Button strip ─────────────────────────────────────────────────────────────
   _drawButtonStrip(L, fighter, isP2) {
-    const { ctx }        = this
-    const { W, H, btnH, btnW } = L
-    const y              = isP2 ? 0 : H - btnH
-    const col            = fighter.colour
-    const isInput        = this.phase === PHASE.INPUT
+    const { ctx }                          = this
+    const { W, H, btnH, btnRowH, btnW, mobile } = L
+    const y       = isP2 ? 0 : H - btnH
+    const col     = fighter.colour
+    const isInput = this.phase === PHASE.INPUT
 
     ctx.save()
     if (isP2) {
-      // Rotate 180° around strip centre so P2 reads it right-side up from their end
       ctx.translate(W / 2, y + btnH / 2)
       ctx.rotate(Math.PI)
       ctx.translate(-W / 2, -(y + btnH / 2))
     }
 
     for (let i = 0; i < BTN_COUNT; i++) {
-      // For P2 (after rotation), visual left = btn 9, visual right = btn 0
-      // But we draw in normal order 0→9; the ctx rotation handles the flip
-      const x      = i * btnW
+      // Mobile: 2 rows of 5. Row 0 = btns 0-4 (top), Row 1 = btns 5-9 (bottom)
+      // Desktop: 1 row of 10
+      const col_ = mobile ? i % 5 : i
+      const row_ = mobile ? Math.floor(i / 5) : 0
+      const bx   = col_ * btnW
+      const by   = y + row_ * btnRowH
+      const bw   = btnW
+      const bh   = btnRowH
+
       const isUlt  = i === 9
       const ultRdy = fighter.ult >= 100
 
       // Background
       ctx.fillStyle = (isUlt && ultRdy && isInput) ? C.ult + '22' : C.surface
-      ctx.fillRect(x, y, btnW, btnH)
+      ctx.fillRect(bx, by, bw, bh)
 
       // Border
       ctx.strokeStyle = isUlt && ultRdy ? C.ult : (isInput ? col + '55' : C.border)
       ctx.lineWidth   = 1
-      ctx.strokeRect(x + 0.5, y + 0.5, btnW - 1, btnH - 1)
+      ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1)
 
-      // Colour strip along bottom of button (which faces arena after flip)
-      ctx.fillStyle = isInput ? col : C.muted + '33'
-      ctx.fillRect(x, y + btnH - 3, btnW, 3)
+      // Colour strip along inner edge (bottom of strip = closest to arena after rotation)
+      // On mobile row 1 (btns 5-9) is the inner row; on desktop the whole strip is inner
+      const isInnerRow = !mobile || row_ === 1
+      if (isInnerRow) {
+        ctx.fillStyle = isInput ? col : C.muted + '33'
+        ctx.fillRect(bx, by + bh - 3, bw, 3)
+      }
 
-      // Number (small, top of button = away from arena)
+      // Number index (small, outer edge = away from arena)
       ctx.fillStyle    = isInput ? col + '77' : C.muted + '33'
-      ctx.font         = `${Math.max(7, btnW * 0.15)}px 'Courier New', monospace`
+      ctx.font         = `${Math.max(7, bw * 0.15)}px 'Courier New', monospace`
       ctx.textAlign    = 'center'
       ctx.textBaseline = 'top'
-      ctx.fillText(i, x + btnW / 2, y + 3)
+      ctx.fillText(i, bx + bw / 2, by + 3)
 
       // Label
       const labelCol = !isInput        ? C.muted + '44'
                      : isUlt && ultRdy ? C.ult
                      : col
       ctx.fillStyle    = labelCol
-      ctx.font         = `bold ${Math.max(7, Math.min(btnW * 0.2, 10))}px 'Courier New', monospace`
+      ctx.font         = `bold ${Math.max(7, Math.min(bw * 0.2, 11))}px 'Courier New', monospace`
       ctx.textBaseline = 'middle'
-      ctx.fillText(BTN_LABEL[i], x + btnW / 2, y + btnH * 0.62)
+      ctx.fillText(BTN_LABEL[i], bx + bw / 2, by + bh * 0.62)
     }
 
-    // Player label at far left (which is far right from P2's view after rotation)
+    // Player label — far left of strip (= far right from P2's rotated view)
     ctx.fillStyle    = col
-    ctx.font         = `bold ${Math.max(8, btnH * 0.2)}px 'Courier New', monospace`
+    ctx.font         = `bold ${Math.max(8, btnRowH * 0.28)}px 'Courier New', monospace`
     ctx.textAlign    = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillText(`P${fighter.id}`, 4, y + btnH / 2)
@@ -780,17 +1048,20 @@ class ClocksOutGame {
     ctx.fillText(`${Math.max(0, fighter.hp)}HP`, barX + barW - 3, hpY + hpH / 2)
 
     // ── Ult bar ──
+    const inFury    = fighter.fury > 0
+    const ultFillW  = inFury ? barW * (fighter.fury / 4) : barW * (fighter.ult / 100)
+    const ultColour = (inFury || ultRdy) ? C.ult : col + '77'
     ctx.fillStyle = C.surface2; ctx.fillRect(barX, ultBarY, barW, ultH)
-    ctx.fillStyle = ultRdy ? C.ult : col + '77'
-    ctx.fillRect(barX, ultBarY, barW * (fighter.ult / 100), ultH)
-    ctx.strokeStyle = ultRdy ? C.ult : C.border; ctx.lineWidth = 1
+    ctx.fillStyle = ultColour; ctx.fillRect(barX, ultBarY, ultFillW, ultH)
+    ctx.strokeStyle = (inFury || ultRdy) ? C.ult : C.border; ctx.lineWidth = 1
     ctx.strokeRect(barX, ultBarY, barW, ultH)
     // Ult label
-    ctx.fillStyle    = ultRdy ? C.ult : C.muted
+    ctx.fillStyle    = (inFury || ultRdy) ? C.ult : C.muted
     ctx.font         = `${Math.max(5, ultH * 0.72)}px 'Courier New', monospace`
     ctx.textAlign    = 'right'
     ctx.textBaseline = 'middle'
-    ctx.fillText(ultRdy ? 'ULT READY' : `ULT ${Math.floor(fighter.ult)}%`, barX + barW - 3, ultBarY + ultH / 2)
+    const ultLabel = inFury ? `FURY ${fighter.fury}` : ultRdy ? 'ULT READY' : `ULT ${Math.floor(fighter.ult)}%`
+    ctx.fillText(ultLabel, barX + barW - 3, ultBarY + ultH / 2)
 
     // ── Match score ── (far right)
     if (this.matchFmt > 1) {
@@ -928,6 +1199,12 @@ class ClocksOutGame {
       ctx.textAlign    = 'center'; ctx.textBaseline = 'middle'
       ctx.fillText(f.facingRight ? '▶' : '◀', 0, 0)
 
+      // P1/P2 label above square
+      ctx.fillStyle    = col
+      ctx.font         = `bold ${Math.max(7, size * 0.28)}px 'Courier New', monospace`
+      ctx.textAlign    = 'center'; ctx.textBaseline = 'bottom'
+      ctx.fillText(`P${f.id}`, 0, -half - 2)
+
       // Block indicator
       if (f.blocking) {
         ctx.strokeStyle = '#99ccff'; ctx.lineWidth = 2
@@ -943,6 +1220,7 @@ class ClocksOutGame {
         ctx.textAlign = 'center'; ctx.textBaseline = 'top'
         ctx.fillText(text, 0, badgeY); badgeY += 9
       }
+      if (f.fury       > 0) badge(`FURY ${f.fury}`,       C.ult)
       if (f.stunned    > 0) badge(`STUN ${f.stunned}`,   '#ddcc44')
       if (f.poisoned   > 0) badge(`PSND ${f.poisoned}`,  '#88dd66')
       if (f.restrained > 0) badge(`REST ${f.restrained}`, '#cc88ee')
@@ -1109,6 +1387,86 @@ class ClocksOutGame {
     if (!isP1 && this.p1.charDef) {
       ctx.fillStyle = C.p1; ctx.textAlign = 'left'
       ctx.fillText(`P1: ${this.p1.charDef.name}`, 10, H - 10)
+    }
+
+    // ── Info popup ──
+    if (this.charInfoOpen) {
+      const char  = CHARACTERS[selIdx]
+      const info  = char.info ?? []
+      const pw    = Math.min(W * 0.9, 420)
+      const lineH = Math.max(13, H * 0.032)
+      const ph    = Math.min(H * 0.78, lineH * (info.length + 3) + 48)
+      const px    = (W - pw) / 2
+      const py    = (H - ph) / 2
+
+      // Backdrop
+      ctx.fillStyle = 'rgba(13,13,15,0.88)'
+      ctx.fillRect(0, 0, W, H)
+
+      // Panel
+      ctx.fillStyle = C.surface
+      ctx.fillRect(px, py, pw, ph)
+      ctx.strokeStyle = char.colour; ctx.lineWidth = 2
+      ctx.strokeRect(px, py, pw, ph)
+
+      // Colour strip top
+      ctx.fillStyle = char.colour
+      ctx.fillRect(px, py, pw, 4)
+
+      // Title
+      ctx.fillStyle    = char.colour
+      ctx.font         = `bold ${Math.min(pw * 0.08, 20)}px 'Arial Narrow', Arial, sans-serif`
+      ctx.textAlign    = 'left'
+      ctx.textBaseline = 'top'
+      ctx.fillText(char.name, px + 12, py + 12)
+
+      ctx.fillStyle = C.muted
+      ctx.font      = `${Math.min(pw * 0.055, 11)}px 'Courier New', monospace`
+      ctx.fillText(char.desc, px + 12, py + 32)
+
+      // Divider
+      ctx.strokeStyle = C.border; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(px + 12, py + 46); ctx.lineTo(px + pw - 12, py + 46); ctx.stroke()
+
+      // Ability lines
+      info.forEach((line, i) => {
+        const lx = px + 12
+        const ly = py + 54 + i * lineH
+        // Highlight the ability keyword before the colon
+        const colon = line.indexOf(':')
+        if (colon > -1) {
+          ctx.fillStyle = char.colour
+          ctx.font      = `bold ${Math.min(lineH * 0.78, 10)}px 'Courier New', monospace`
+          ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+          ctx.fillText(line.slice(0, colon + 1), lx, ly)
+          const kw = ctx.measureText(line.slice(0, colon + 1)).width
+          ctx.fillStyle = C.accent
+          ctx.font      = `${Math.min(lineH * 0.75, 10)}px 'Courier New', monospace`
+          // Word-wrap remainder
+          const rest = line.slice(colon + 1)
+          const maxW = pw - 24 - kw
+          let words = rest.split(' '), row = '', ry = ly
+          for (const w of words) {
+            const test = row + w + ' '
+            if (ctx.measureText(test).width > maxW && row) {
+              ctx.fillText(row.trim(), lx + kw, ry); ry += lineH * 0.95; row = w + ' '
+            } else { row = test }
+          }
+          if (row.trim()) ctx.fillText(row.trim(), lx + kw, ry)
+        } else {
+          ctx.fillStyle = C.accent
+          ctx.font      = `${Math.min(lineH * 0.75, 10)}px 'Courier New', monospace`
+          ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+          ctx.fillText(line, lx, ly)
+        }
+      })
+
+      // Confirm hint
+      ctx.fillStyle    = pCol + 'bb'
+      ctx.font         = `bold ${Math.min(pw * 0.055, 10)}px 'Courier New', monospace`
+      ctx.textAlign    = 'center'
+      ctx.textBaseline = 'bottom'
+      ctx.fillText('TAP PANEL / ENTER to confirm    ESC / BACKSPACE to go back', px + pw / 2, py + ph - 8)
     }
   }
 }
