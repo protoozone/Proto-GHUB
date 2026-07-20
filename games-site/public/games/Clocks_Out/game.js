@@ -153,16 +153,16 @@ const CHARACTERS = [
     id: 'takashi',
     name: 'TAKASHI', // RYU
     colour: '#e8954a',
-    desc: 'Street Fighter. Self Healing High Damage.',
+    desc: 'Street Fighter: Self Healing High Damage.',
     abilityNames: { 5:'CHARGE', 6:'PARRY', 7:'DASH', 8:'CLEANSE' },
     ultName: 'FURY',
     info: [
-      'PASSIVE: Every 8 actions resolved, heals 1HP (max 10).',
-      'SP.ATK (5) — CHARGE + HEAVY: Fills 2 slots. Slot 1 = CHARGE (wait). Slot 2 = HEAVY (2 dmg, range 1). If only 1 slot free, HEAVY carries to next queue slot 0.',
-      'CON.ATK (6) — PARRY: If opponent attacks this step, take no damage and deal 1 dmg instead. If opponent does not attack, lose your next slot (forced WAIT). If at end of queue, first slot of next queue becomes WAIT.',
-      'ENGAGE (7) — DASH: Move 2 tiles toward opponent. If already 1 tile away, jump to the other side. If 1 tile away and opponent is at wall, does nothing.',
-      'RECOVER (8) — CLEANSE: Remove all status effects. If none present, gain 5% ult charge.',
-      'ULT — FURY: Enter FURY for 4 actions. All outgoing damage doubled. Ult is locked at 0% during FURY and resets to 0 when it ends.',
+      'PASSIVE Fighting Spirit: Heals 1hp/8acts.',
+      'SP.ATK (5) Focus Strike: Fills 2 acts - act 1 charge [NULL], act 2 heavy 1t/2dmg. [ATK]',
+      'CON.ATK (6) Counter: If enemy would [ATK] this act, deal 1dmg and take no dmg from this attack. If the enemy would not [ATK], flinch next act [NULL]. [NULL]',
+      'ENGAGE (7) Quickstep: Moves 2 tiles in direction of opponent. [MOVE]',
+      'RECOVER (8) Clear the Mind: Remove all status effects. If no status, gain 5% ult charge. [RECOV]',
+      'ULT (9) Fighting Fury: Enter FURY for 4 actions. x2 all damage dealt. [NULL]',
     ],
     onSequenceStart(fighter, game) {
       // Nothing to do at sequence start
@@ -193,16 +193,16 @@ const CHARACTERS = [
     id: 'lia',
     name: 'LIA', // RASSI
     colour: '#c45c8a',
-    desc: 'Chain Fighter. Distance Closer Tactical.',
+    desc: 'Chain Fighter: Distance Closer Tactical.',
     abilityNames: { 5:'DEBUFF', 6:'CHAIN', 7:'PULL', 8:'VAMP' },
     ultName: 'BIND',
     info: [
-      'PASSIVE: If the enemy moves within 1 tile of Lia (by their own action or being pulled), they take 1 unblockable damage.',
-      'SP.ATK (5) — DEBUFF: 4 tile range. If the enemy declared a MOVE action this step, their next queue slot (overflowable) becomes a forced WAIT after they move.',
-      'CON.ATK (6) — CHAIN: 1 tile range. If the enemy did NOT declare a MOVE action this step, poison them for 3 turns (1 unblockable damage at the end of each of the next 3 resolve steps).',
-      'ENGAGE (7) — PULL: 4 tile range. Drag the enemy 1 tile toward Lia. Triggers passive if they land within 1 tile.',
-      'RECOVER (8) — VAMP: If the enemy is currently poisoned, heal 2HP.',
-      'ULT — BIND: 2 tile range. Deals 2 damage instantly (blockable) and stuns the enemy for their next 2 queue slots (overflowable). Resolves after movement so the enemy can back out by predicting it.',
+      'PASSIVE Master of Movement: If enemy moves within 1t of Lia, 1 unblockable damage.',
+      'SP.ATK (5) Trip: 4t range. If enemy would [MOVE], cause next act to be stunned [NULL]. [ATK]',
+      'CON.ATK (6) Envenomate: 1t. If enemy would not [MOVE], poison for 3 turns. [NULL]',
+      'ENGAGE (7) Drag: 4t. Pull enemy towards 1t. Counts as enemy movement. [ATK]',
+      'RECOVER (8) Neotech Drain: If the enemy is poisoned, heal 2HP. [RECOV]',
+      'ULT (9) Ensnare: 2t. 2dmg, stun 2. [ATK]',
     ],
     onSequenceStart() {},
     onResolveStep(fighter, action, opponent, game) {
@@ -240,16 +240,16 @@ const CHARACTERS = [
     id: 'andile',
     name: 'ANDILE', // KASONGO
     colour: '#4ab8c4',
-    desc: 'Future Fighter. Teleporter Stunner.',
+    desc: 'Future Fighter: Teleporter Stunner.',
     abilityNames: { 5:'STATIC', 6:'IGNITE', 7:'WARP', 8:'BLINK' },
     ultName: 'ELECTRIFY',
     info: [
-      'PASSIVE: JAB always applies a static mark to the enemy (even if blocked).',
-      'SP.ATK (5) — STATIC: 2 tile range. Applies a static mark to the enemy. No damage.',
-      'CON.ATK (6) — IGNITE: 2 tile range. Consumes static mark: deals 1 unblockable damage and stuns enemy next slot. Does nothing if no mark.',
-      'ENGAGE (7) — WARP: Teleport beside the enemy, biased toward centre.',
-      'RECOVER (8) — BLINK: Teleport to tile 4 (or 3/5 if enemy is there). Heals 1HP if not within 1 tile of enemy.',
-      'ULT — ELECTRIFY: For 4 actions, JAB deals +1 damage. Any adjacent ATTACK against Andile (blocked or not) deals 1 damage back to attacker and marks them.',
+      'PASSIVE Charged: Jab applies static mark on contact.',
+      'SP.ATK (5) Spark Arc: 2t. Applies static mark. [NULL]',
+      'CON.ATK (6) Lightning Blast: 2t. Consumes static mark to deal 1 damage and 1 stun. [NULL]',
+      'ENGAGE (7) Warp: Teleport within 1t of enemy (bias towards centre). [MOVE]',
+      'RECOVER (8) Return: Teleport to centre (or 3/5 if occupied). Heal 1HP if not within 1t of enemy. [RECOV]',
+      'ULT (9) Ignite: For 4 actions, Jab deals +1 damage. Any ATK within 1t deals 1dmg to enemy and applies static mark. [NULL]',
     ],
     onSequenceStart() {},
     onResolveStep(fighter, action, opponent, game) {
@@ -269,7 +269,7 @@ const CHARACTERS = [
     id: 'estelle',
     name: 'ESTELLE', // ORLOV
     colour: '#a07ad4',
-    desc: 'Necromancer. HP Drain Punisher.',
+    desc: 'Necromancer: HP Drain Punisher.',
     ...DUMMY_MOVESET,
   },
 ]

@@ -293,7 +293,6 @@ body.in-game #game-panel{display:flex}
 <div class="chrome">
   <header>
     <h1>CLOCK'S OUT</h1>
-    <span class="sub">Buffered Fighting — Queue Your Moves. Watch Them Land.</span>
   </header>
 
   <button class="back-btn" onclick="returnToHub()">← Back To Hub</button>
@@ -308,10 +307,10 @@ body.in-game #game-panel{display:flex}
       <div class="config-row">
         <div>
           <div class="config-label">Queue Slots</div>
-          <div class="config-hint">Actions per round — 1 to 20</div>
+          <div class="config-hint">Actions per round: 1 to 20</div>
         </div>
         <div class="config-right">
-          <button class="stepper-btn" onclick="stepSlots(-1)">−</button>
+          <button class="stepper-btn" onclick="stepSlots(-1)">-</button>
           <input class="stepper-input" id="slots-input" type="text" inputmode="numeric"
             value="3" onchange="onSlotsInput(this.value)" onblur="onSlotsInput(this.value)">
           <button class="stepper-btn" onclick="stepSlots(1)">+</button>
@@ -321,7 +320,7 @@ body.in-game #game-panel{display:flex}
       <div class="config-row">
         <div>
           <div class="config-label">Timer (seconds)</div>
-          <div class="config-hint">0.1s to 120s — snaps to common values</div>
+          <div class="config-hint">0.1s to 120s</div>
         </div>
         <div class="config-right">
           <button class="stepper-btn" onclick="stepTimer(-1)">−</button>
@@ -351,16 +350,16 @@ body.in-game #game-panel{display:flex}
   <div class="controls-ref">
     <div class="controls-title">Controls</div>
     <div class="controls-grid">
-      <div class="ctrl-line"><span class="ctrl-key">1</span><span class="ctrl-desc">Jab — 1 dmg, 1 tile ahead</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">1</span><span class="ctrl-desc">Jab: 1 dmg, 1 tile ahead</span></div>
       <div class="ctrl-line"><span class="ctrl-key">Num1</span><span class="ctrl-desc">Jab</span></div>
       <div class="ctrl-line"><span class="ctrl-key">2</span><span class="ctrl-desc">Move left</span></div>
       <div class="ctrl-line"><span class="ctrl-key">Num2</span><span class="ctrl-desc">Move left</span></div>
       <div class="ctrl-line"><span class="ctrl-key">3</span><span class="ctrl-desc">Move right</span></div>
       <div class="ctrl-line"><span class="ctrl-key">Num3</span><span class="ctrl-desc">Move right</span></div>
-      <div class="ctrl-line"><span class="ctrl-key">4</span><span class="ctrl-desc">Block — reduces dmg by 1</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">4</span><span class="ctrl-desc">Block: reduces dmg by 1</span></div>
       <div class="ctrl-line"><span class="ctrl-key">Num4</span><span class="ctrl-desc">Block</span></div>
-      <div class="ctrl-line"><span class="ctrl-key">5–9</span><span class="ctrl-desc">Character abilities</span></div>
-      <div class="ctrl-line"><span class="ctrl-key">Num5–9</span><span class="ctrl-desc">Character abilities</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">5-9</span><span class="ctrl-desc">Character abilities</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">Num5-9</span><span class="ctrl-desc">Character abilities</span></div>
     </div>
   </div>
 
