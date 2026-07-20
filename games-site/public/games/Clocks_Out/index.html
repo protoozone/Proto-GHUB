@@ -132,18 +132,21 @@ body.in-game .chrome{display:none}
   flex-shrink:0;
 }
 .stepper-btn:hover{border-color:var(--border-bright);background:#22252f}
-.stepper-val{
-  width:48px;
+.stepper-input{
+  width:58px;
   text-align:center;
   background:var(--surface2);
   border:1px solid var(--border);
   color:var(--accent-hot);
-  font-size:0.95rem;
+  font-size:0.9rem;
   font-family:var(--mono);
-  padding:3px 0;
+  padding:3px 4px;
   font-weight:700;
-  letter-spacing:0.05em;
+  letter-spacing:0.03em;
+  outline:none;
+  transition:border-color .12s;
 }
+.stepper-input:focus{border-color:var(--accent)}
 
 /* ── Match format ── */
 .format-row{
@@ -290,6 +293,7 @@ body.in-game #game-panel{display:flex}
 <div class="chrome">
   <header>
     <h1>CLOCK'S OUT</h1>
+    <span class="sub">Buffered Fighting — Queue Your Moves. Watch Them Land.</span>
   </header>
 
   <button class="back-btn" onclick="returnToHub()">← Back To Hub</button>
@@ -304,11 +308,12 @@ body.in-game #game-panel{display:flex}
       <div class="config-row">
         <div>
           <div class="config-label">Queue Slots</div>
-          <div class="config-hint">Actions per round: default 3, min 1, max 20</div>
+          <div class="config-hint">Actions per round — 1 to 20</div>
         </div>
         <div class="config-right">
           <button class="stepper-btn" onclick="stepSlots(-1)">−</button>
-          <div class="stepper-val" id="slots-val">3</div>
+          <input class="stepper-input" id="slots-input" type="text" inputmode="numeric"
+            value="3" onchange="onSlotsInput(this.value)" onblur="onSlotsInput(this.value)">
           <button class="stepper-btn" onclick="stepSlots(1)">+</button>
         </div>
       </div>
@@ -316,11 +321,12 @@ body.in-game #game-panel{display:flex}
       <div class="config-row">
         <div>
           <div class="config-label">Timer (seconds)</div>
-          <div class="config-hint">Time to fill queue: default 5s, min 0.2s, max 30s</div>
+          <div class="config-hint">0.1s to 120s — snaps to common values</div>
         </div>
         <div class="config-right">
           <button class="stepper-btn" onclick="stepTimer(-1)">−</button>
-          <div class="stepper-val" id="timer-val">5.0</div>
+          <input class="stepper-input" id="timer-input" type="text" inputmode="decimal"
+            value="5" onchange="onTimerInput(this.value)" onblur="onTimerInput(this.value)">
           <button class="stepper-btn" onclick="stepTimer(1)">+</button>
         </div>
       </div>
@@ -345,13 +351,13 @@ body.in-game #game-panel{display:flex}
   <div class="controls-ref">
     <div class="controls-title">Controls</div>
     <div class="controls-grid">
-      <div class="ctrl-line"><span class="ctrl-key">1</span><span class="ctrl-desc">Jab: 1 dmg, 1 tile ahead</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">1</span><span class="ctrl-desc">Jab — 1 dmg, 1 tile ahead</span></div>
       <div class="ctrl-line"><span class="ctrl-key">Num1</span><span class="ctrl-desc">Jab</span></div>
       <div class="ctrl-line"><span class="ctrl-key">2</span><span class="ctrl-desc">Move left</span></div>
       <div class="ctrl-line"><span class="ctrl-key">Num2</span><span class="ctrl-desc">Move left</span></div>
       <div class="ctrl-line"><span class="ctrl-key">3</span><span class="ctrl-desc">Move right</span></div>
       <div class="ctrl-line"><span class="ctrl-key">Num3</span><span class="ctrl-desc">Move right</span></div>
-      <div class="ctrl-line"><span class="ctrl-key">4</span><span class="ctrl-desc">Block: reduces dmg by 1</span></div>
+      <div class="ctrl-line"><span class="ctrl-key">4</span><span class="ctrl-desc">Block — reduces dmg by 1</span></div>
       <div class="ctrl-line"><span class="ctrl-key">Num4</span><span class="ctrl-desc">Block</span></div>
       <div class="ctrl-line"><span class="ctrl-key">5–9</span><span class="ctrl-desc">Character abilities</span></div>
       <div class="ctrl-line"><span class="ctrl-key">Num5–9</span><span class="ctrl-desc">Character abilities</span></div>
@@ -373,28 +379,57 @@ body.in-game #game-panel{display:flex}
 
 <script>
 // ── Config state ──────────────────────────────────────────────────────────────
-let slots   = 3
-let timerS  = 5.0
+let slots    = 3
+let timerS   = 5.0
 let matchFmt = 1
 
-const SLOT_MIN = 1, SLOT_MAX = 20
-const TIMER_MIN = 0.2, TIMER_MAX = 30
-const TIMER_STEPS = [0.2,0.5,1,1.5,2,3,4,5,6,7,8,10,12,15,20,25,30]
+const SLOT_MIN   = 1,   SLOT_MAX   = 20
+const TIMER_MIN  = 0.1, TIMER_MAX  = 120
+const TIMER_STEPS = [0.1,0.2,0.3,0.5,0.8,1,1.5,2,3,4,5,6,7,8,9,10,15,20,25,30,35,40,45,60,80,100,120]
+
+function clampSlots(v) { return Math.max(SLOT_MIN, Math.min(SLOT_MAX, Math.round(v))) }
+function clampTimer(v) { return Math.max(TIMER_MIN, Math.min(TIMER_MAX, Math.round(v * 10) / 10)) }
+
+function nearestTimerStep(v) {
+  return TIMER_STEPS.reduce((a, b) => Math.abs(b - v) < Math.abs(a - v) ? b : a)
+}
+
+function fmtTimer(v) {
+  return v % 1 === 0 ? v.toFixed(0) : v.toFixed(1)
+}
+
+function setSlotsDisplay() {
+  document.getElementById('slots-input').value = slots
+}
+
+function setTimerDisplay() {
+  document.getElementById('timer-input').value = fmtTimer(timerS)
+}
 
 function stepSlots(d) {
-  slots = Math.max(SLOT_MIN, Math.min(SLOT_MAX, slots + d))
-  document.getElementById('slots-val').textContent = slots
+  slots = clampSlots(slots + d)
+  setSlotsDisplay()
 }
 
 function stepTimer(d) {
-  const idx = TIMER_STEPS.findIndex(v => v >= timerS)
-  const next = Math.max(0, Math.min(TIMER_STEPS.length - 1, idx + d))
+  const idx  = TIMER_STEPS.findIndex(v => v >= timerS - 0.001)
+  const base = (idx === -1) ? TIMER_STEPS.length - 1 : idx
+  const next = Math.max(0, Math.min(TIMER_STEPS.length - 1, base + d))
   timerS = TIMER_STEPS[next]
-  document.getElementById('timer-val').textContent = timerS.toFixed(timerS < 1 ? 1 : 0) + (timerS >= 1 ? '.0' : '')
+  setTimerDisplay()
 }
 
-// Patch up display on load
-document.getElementById('timer-val').textContent = '5.0'
+function onSlotsInput(raw) {
+  const v = parseInt(raw, 10)
+  slots = isNaN(v) ? slots : clampSlots(v)
+  setSlotsDisplay()
+}
+
+function onTimerInput(raw) {
+  const v = parseFloat(raw)
+  timerS = isNaN(v) ? timerS : clampTimer(v)
+  setTimerDisplay()
+}
 
 // Format buttons
 document.getElementById('fmt-row').addEventListener('click', e => {
