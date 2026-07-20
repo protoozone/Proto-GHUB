@@ -1573,18 +1573,23 @@ class ClocksOutGame {
       ctx.strokeRect(sx, sy, sw, sw)
 
       const tx = sx + sw + 8
+      const nameFont = Math.min(cellH * 0.2, 13)
+      const descFont = Math.min(cellH * 0.14, 10)
+      const nameY = y + cellH * 0.2
+      const descY = nameY + nameFont + 1
+
       ctx.fillStyle = isSel ? char.colour : C.accent
-      ctx.font = `bold ${Math.min(cellH * 0.2, 13)}px 'Arial Narrow', Arial, sans-serif`
+      ctx.font = `bold ${nameFont}px 'Arial Narrow', Arial, sans-serif`
       ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-      ctx.fillText(char.name, tx, y + cellH * 0.16)
+      ctx.fillText(char.name, tx, nameY)
 
       ctx.fillStyle = C.muted
-      ctx.font = `${Math.min(cellH * 0.14, 10)}px 'Courier New', monospace`
+      ctx.font = `${descFont}px 'Courier New', monospace`
       const maxDW = cellW - (tx - x) - 6
       let desc = char.desc
       while (desc.length > 1 && ctx.measureText(desc).width > maxDW) desc = desc.slice(0, -1)
       if (desc.length < char.desc.length) desc = desc.slice(0, -1) + '…'
-      ctx.fillText(desc, tx, y + cellH * 0.46)
+      ctx.fillText(desc, tx, descY)
 
       if (isSel) {
         ctx.fillStyle = pCol; ctx.font = `bold 8px 'Courier New', monospace`
@@ -1616,10 +1621,39 @@ class ClocksOutGame {
       const char  = CHARACTERS[selIdx]
       const info  = char.info ?? []
       const pw    = Math.min(W * 0.9, 420)
-      const lineH = Math.max(13, H * 0.032)
-      const ph    = Math.min(H * 0.78, lineH * (info.length + 3) + 48)
-      const px    = (W - pw) / 2
-      const py    = (H - ph) / 2
+      const lx    = px => px + 12
+      const fontSize  = 10
+      const lineH     = 14   // tight fixed line height
+      const indentW   = 6    // extra indent for wrapped continuation lines
+      const maxTextW  = (pw) => pw - 28
+
+      // Measure total height needed by doing a dry run
+      const measureLines = (pww) => {
+        let h = 54 + 8  // header + divider + padding
+        ctx.font = `${fontSize}px 'Courier New', monospace`
+        info.forEach(line => {
+          const colon = line.indexOf(':')
+          if (colon > -1) {
+            const kw    = ctx.measureText(line.slice(0, colon + 1)).width
+            const rest  = line.slice(colon + 1)
+            const avail = maxTextW(pww) - kw
+            let row = '', rows = 1
+            for (const w of rest.split(' ')) {
+              const test = row + w + ' '
+              if (ctx.measureText(test).width > avail && row) { rows++; row = w + ' ' }
+              else row = test
+            }
+            h += rows * lineH + 4
+          } else {
+            h += lineH + 4
+          }
+        })
+        return h + 28  // bottom hint
+      }
+
+      const ph = Math.min(H * 0.88, measureLines(pw))
+      const ppx = (W - pw) / 2
+      const ppy = (H - ph) / 2
 
       // Backdrop
       ctx.fillStyle = 'rgba(13,13,15,0.88)'
@@ -1627,68 +1661,80 @@ class ClocksOutGame {
 
       // Panel
       ctx.fillStyle = C.surface
-      ctx.fillRect(px, py, pw, ph)
+      ctx.fillRect(ppx, ppy, pw, ph)
       ctx.strokeStyle = char.colour; ctx.lineWidth = 2
-      ctx.strokeRect(px, py, pw, ph)
+      ctx.strokeRect(ppx, ppy, pw, ph)
 
       // Colour strip top
       ctx.fillStyle = char.colour
-      ctx.fillRect(px, py, pw, 4)
+      ctx.fillRect(ppx, ppy, pw, 4)
 
       // Title
-      ctx.fillStyle    = char.colour
-      ctx.font         = `bold ${Math.min(pw * 0.08, 20)}px 'Arial Narrow', Arial, sans-serif`
-      ctx.textAlign    = 'left'
-      ctx.textBaseline = 'top'
-      ctx.fillText(char.name, px + 12, py + 12)
+      ctx.fillStyle = char.colour
+      ctx.font      = `bold ${Math.min(pw * 0.08, 20)}px 'Arial Narrow', Arial, sans-serif`
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      ctx.fillText(char.name, ppx + 12, ppy + 10)
 
       ctx.fillStyle = C.muted
-      ctx.font      = `${Math.min(pw * 0.055, 11)}px 'Courier New', monospace`
-      ctx.fillText(char.desc, px + 12, py + 32)
+      ctx.font      = `${fontSize}px 'Courier New', monospace`
+      ctx.fillText(char.desc, ppx + 12, ppy + 30)
 
       // Divider
       ctx.strokeStyle = C.border; ctx.lineWidth = 1
-      ctx.beginPath(); ctx.moveTo(px + 12, py + 46); ctx.lineTo(px + pw - 12, py + 46); ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(ppx + 12, ppy + 44)
+      ctx.lineTo(ppx + pw - 12, ppy + 44)
+      ctx.stroke()
 
-      // Ability lines
-      info.forEach((line, i) => {
-        const lx = px + 12
-        const ly = py + 54 + i * lineH
-        // Highlight the ability keyword before the colon
+      // Ability lines — running Y cursor
+      let curY = ppy + 52
+      const tlx = ppx + 12
+
+      info.forEach(line => {
         const colon = line.indexOf(':')
         if (colon > -1) {
+          // Keyword in char colour
           ctx.fillStyle = char.colour
-          ctx.font      = `bold ${Math.min(lineH * 0.78, 10)}px 'Courier New', monospace`
+          ctx.font      = `bold ${fontSize}px 'Courier New', monospace`
           ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-          ctx.fillText(line.slice(0, colon + 1), lx, ly)
-          const kw = ctx.measureText(line.slice(0, colon + 1)).width
+          ctx.fillText(line.slice(0, colon + 1), tlx, curY)
+          const kw    = ctx.measureText(line.slice(0, colon + 1)).width
+          // Rest in accent, word-wrapped
           ctx.fillStyle = C.accent
-          ctx.font      = `${Math.min(lineH * 0.75, 10)}px 'Courier New', monospace`
-          // Word-wrap remainder
-          const rest = line.slice(colon + 1)
-          const maxW = pw - 24 - kw
-          let words = rest.split(' '), row = '', ry = ly
-          for (const w of words) {
-            const test = row + w + ' '
-            if (ctx.measureText(test).width > maxW && row) {
-              ctx.fillText(row.trim(), lx + kw, ry); ry += lineH * 0.95; row = w + ' '
-            } else { row = test }
+          ctx.font      = `${fontSize}px 'Courier New', monospace`
+          const rest  = line.slice(colon + 1)
+          const avail = maxTextW(pw) - kw
+          let row = '', firstRow = true
+          const flush = (r) => {
+            const x = firstRow ? tlx + kw : tlx
+            ctx.fillText(r.trim(), x, curY)
+            curY += lineH
+            firstRow = false
           }
-          if (row.trim()) ctx.fillText(row.trim(), lx + kw, ry)
+          for (const w of rest.split(' ')) {
+            const test = row + w + ' '
+            // On wrap, available width resets to full panel width
+            const avail2 = firstRow ? avail : maxTextW(pw)
+            if (ctx.measureText(test).width > avail2 && row) { flush(row); row = w + ' ' }
+            else row = test
+          }
+          if (row.trim()) flush(row)
+          curY += 3  // small gap between entries
         } else {
           ctx.fillStyle = C.accent
-          ctx.font      = `${Math.min(lineH * 0.75, 10)}px 'Courier New', monospace`
+          ctx.font      = `${fontSize}px 'Courier New', monospace`
           ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-          ctx.fillText(line, lx, ly)
+          ctx.fillText(line, tlx, curY)
+          curY += lineH + 3
         }
       })
 
       // Confirm hint
       ctx.fillStyle    = pCol + 'bb'
-      ctx.font         = `bold ${Math.min(pw * 0.055, 10)}px 'Courier New', monospace`
+      ctx.font         = `bold ${fontSize}px 'Courier New', monospace`
       ctx.textAlign    = 'center'
       ctx.textBaseline = 'bottom'
-      ctx.fillText('TAP PANEL / ENTER to confirm    ESC / BACKSPACE to go back', px + pw / 2, py + ph - 8)
+      ctx.fillText('TAP PANEL / ENTER to confirm    ESC / BACKSPACE to go back', ppx + pw / 2, ppy + ph - 8)
     }
   }
 }
