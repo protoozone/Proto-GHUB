@@ -38,11 +38,12 @@ const ACTION = {
   CHARGE:     10,   // Takashi unique atk part 1
   HEAVY:      11,   // Takashi unique atk part 2 (2 dmg)
   FORCED_WAIT:12,   // Takashi parry penalty / carry-over
+  REDEPLOY:   13,   // Andile warp passive — slot 1 of queue break
 }
 
 const BTN_LABEL   = ['WAIT','JAB','LEFT','RIGHT','BLOCK','SP.ATK','CON.ATK','ENGAGE','RECOVER','ULT']
 const ACTION_NAME  = ['WAIT','JAB','LEFT','RIGHT','BLOCK','SP.ATK','CON.ATK','ENGAGE','RECOVER','ULT',
-                      'CHARGE','HEAVY','WAIT']  // indices 10,11,12
+                      'CHARGE','HEAVY','WAIT','REDEPLOY']  // indices 10-13
 
 // Action classes — used for resolution ordering and DEFEND precheck logic
 const ACLASS = {
@@ -85,6 +86,7 @@ function actionClass(action, charId) {
       if (charId === 'andile') return ACLASS.MOVE   // BLINK teleport
       return ACLASS.RECOVER
     case ACTION.ULT:        return ACLASS.RECOVER
+    case ACTION.REDEPLOY:   return ACLASS.MOVE   // Andile warp — non-parryable teleport
     default:                return ACLASS.NULL
   }
 }
@@ -123,13 +125,14 @@ const C = {
 
 // ── Phases ────────────────────────────────────────────────────────────────────
 const PHASE = {
-  CHAR_P1: 'char_p1',
-  CHAR_P2: 'char_p2',
-  INPUT:   'input',
-  RESOLVE: 'resolve',
-  BETWEEN: 'between',
-  DEAD:    'dead',
-  SETOVER: 'setover',
+  CHAR_P1:     'char_p1',
+  CHAR_P2:     'char_p2',
+  INPUT:       'input',
+  RESOLVE:     'resolve',
+  BETWEEN:     'between',
+  WARP_SELECT: 'warp_select',  // Andile passive: both reinput remaining slots, Andile picks deploy tile
+  DEAD:        'dead',
+  SETOVER:     'setover',
 }
 
 // ── Characters ────────────────────────────────────────────────────────────────
@@ -298,6 +301,9 @@ class Fighter {
     this.movedThisStep    = false  // set true if fighter moved this resolve step
     this.staticMarked     = false  // Andile: marked for ignite
     this.electrify        = 0     // Andile ult: actions remaining
+    this.warpUsed         = false // Andile passive: once per match
+    this.warping          = false // Andile: untargetable this step
+    this.redeployTile     = null  // Andile warp: chosen tile (null = not yet set)
   }
 
   get colour() { return this.charDef?.colour ?? (this.id === 1 ? C.p1 : C.p2) }
@@ -321,6 +327,9 @@ class Fighter {
     this.movedThisStep    = false
     this.staticMarked     = false
     this.electrify        = 0
+    this.warpUsed         = false
+    this.warping          = false
+    this.redeployTile     = null
     // ult persists
   }
 
@@ -338,39 +347,39 @@ class Fighter {
 }
 
 // ── Layout helper ─────────────────────────────────────────────────────────────
-// Stack (top→bottom):
-//   P2 btn strip | space | P2 timer | P2 queue | arena | P1 queue | P1 timer | space | P1 btn strip
 function computeLayout(W, H, slots) {
   const mobile  = W < 600
   const btnRows = mobile ? 2 : 1
   const btnH    = mobile
-    ? Math.max(64, Math.min(H * 0.2, 100))   // two rows — taller total strip
-    : Math.max(48, Math.min(H * 0.17, 76))   // one row
-  const btnRowH = btnH / btnRows              // height of each button row
-  const btnW    = mobile ? W / 5 : W / BTN_COUNT  // 5 wide on mobile, 10 on desktop
-  const space  = Math.max(6, H * 0.02)
-  const timerH = Math.max(14, H * 0.03)
-  const hudH   = Math.max(20, H * 0.045)
-  const pad    = 3  // gap between zones
+    ? Math.max(64, Math.min(H * 0.2, 100))
+    : Math.max(48, Math.min(H * 0.17, 76))
+  const btnRowH = btnH / btnRows
+  const btnW    = mobile ? W / 5 : W / BTN_COUNT
+  const undoH   = Math.max(18, Math.min(H * 0.04, 28))
+  const space   = Math.max(6, H * 0.02)
+  const timerH  = Math.max(14, H * 0.03)
+  const hudH    = Math.max(20, H * 0.045)
+  const pad     = 3
 
   const slotSz  = Math.max(20, Math.min((W * 0.72) / slots - 6, Math.min(H * 0.06, 40)))
   const slotGap = 5
   const queueW  = slots * (slotSz + slotGap) - slotGap
   const queueH  = slotSz
+  const tileW   = W / TILE_COUNT
 
-  const tileW  = W / TILE_COUNT
-
-  // Available height for the whole middle block
-  const midH = H - btnH * 2 - space * 2
-  // Middle block = timer + queue + hud + arena + hud + queue + timer
+  // Each end: btnH + undoH + space
+  const endH  = btnH + undoH + space
+  const midH  = H - endH * 2
   const fixedMid = (timerH + pad + queueH + pad + hudH + pad) * 2
   const arenaH = Math.max(tileW * 0.7, Math.min(tileW * 1.1, midH - fixedMid))
-
-  // Total middle content height — centre it in the available mid zone
   const totalMid = timerH + pad + queueH + pad + hudH + pad + arenaH + pad + hudH + pad + queueH + pad + timerH
-  const midStartY = btnH + space + Math.max(0, (midH - totalMid) / 2)
+  const midStartY = endH + Math.max(0, (midH - totalMid) / 2)
 
-  // Build positions from top of middle block
+  // P2 zones (top)
+  const p2BtnY  = 0
+  const p2UndoY = btnH           // undo bar just below P2 buttons
+
+  // Middle zones
   let y = midStartY
   const p2TimerY = y;  y += timerH + pad
   const p2QueueY = y;  y += queueH + pad
@@ -380,14 +389,20 @@ function computeLayout(W, H, slots) {
   const p1QueueY = y;  y += queueH + pad
   const p1TimerY = y
 
+  // P1 zones (bottom)
+  const p1UndoY = H - btnH - undoH
+  const p1BtnY  = H - btnH
+
   return {
     W, H,
-    mobile, btnRows, btnH, btnRowH, btnW, space,
+    mobile, btnRows, btnH, btnRowH, btnW, undoH, space,
     timerH, hudH, pad,
     slotSz, slotGap, queueW, queueH,
     arenaH, arenaY, tileW,
+    p2BtnY, p2UndoY,
     p2TimerY, p2QueueY, p2HudY,
-    p1HudY,   p1QueueY, p1TimerY,
+    p1HudY, p1QueueY, p1TimerY,
+    p1UndoY, p1BtnY,
     queueStartX: (W - queueW) / 2,
   }
 }
@@ -409,7 +424,7 @@ class ClocksOutGame {
     this.p2 = new Fighter(2, this.slots)
 
     this.charSelectIdx = [0, 0]
-    this.charInfoOpen  = false  // showing ability popup on char select
+    this.charInfoOpen  = false
 
     this.phase        = PHASE.CHAR_P1
     this.timeLeft     = 0
@@ -418,6 +433,9 @@ class ClocksOutGame {
     this.resolveTimer = 0
     this.betweenTimer = 0
     this.deadTimer    = 0
+
+    // How many slots are in the current warp input window
+    this._warpWindowSize = 0
 
     this.RESOLVE_STEP_MS = 700
     this.BETWEEN_MS      = 2000
@@ -457,6 +475,15 @@ class ClocksOutGame {
   }
 
   resize() { this._render() }
+
+  // ── Warp window target ───────────────────────────────────────────────────────
+  // During WARP_SELECT the queue fills to resolveIdx + _warpWindowSize.
+  // During normal INPUT it fills to this.slots.
+  get _inputSlotTarget() {
+    return this.phase === PHASE.WARP_SELECT
+      ? this.resolveIdx + this._warpWindowSize
+      : this.slots
+  }
 
   // ── Character select ────────────────────────────────────────────────────────
   _confirmChar(playerIdx, charIdx) {
@@ -501,12 +528,21 @@ class ClocksOutGame {
 
   _lockIn(fighter) {
     fighter.locked = true
-    if (this.p1.locked && this.p2.locked) this._beginResolve()
+    if (this.p1.locked && this.p2.locked) {
+      if (this.phase === PHASE.WARP_SELECT) this._resumeResolve()
+      else this._beginResolve()
+    }
   }
 
   _beginResolve() {
     this.phase        = PHASE.RESOLVE
     this.resolveIdx   = 0
+    this.resolveTimer = this.RESOLVE_STEP_MS
+  }
+
+  // Resume resolving mid-sequence (after warp select) — does NOT reset resolveIdx
+  _resumeResolve() {
+    this.phase        = PHASE.RESOLVE
     this.resolveTimer = this.RESOLVE_STEP_MS
   }
 
@@ -518,13 +554,13 @@ class ClocksOutGame {
     const c2 = this.p2.charDef?.id
     const ac1 = actionClass(a1, c1)
     const ac2 = actionClass(a2, c2)
-    this._ac1 = ac1; this._ac2 = ac2  // exposed for character ability checks
+    this._ac1 = ac1; this._ac2 = ac2
 
     // Reset per-step state
     this.p1.blocking      = false; this.p2.blocking      = false
     this.p1.parrying      = false; this.p2.parrying      = false
     this.p1.lastDamage    = 0;     this.p2.lastDamage    = 0
-    this.p1.movedThisStep = false;    this.p2.movedThisStep = false
+    this.p1.movedThisStep = false; this.p2.movedThisStep = false
 
     // ── Phase 0: DEFEND precheck ─────────────────────────────────────────────
     if (ac1 === ACLASS.DEFEND) {
@@ -535,7 +571,6 @@ class ClocksOutGame {
       if (a2 === ACTION.BLOCK)   this.p2.blocking = true
       if (a2 === ACTION.CON_ATK) this.p2.parrying = true
     }
-    // (Lia DEBUFF and PULL are ATTACK class — handled in attack phase)
 
     // ── Phase 1: MOVE ────────────────────────────────────────────────────────
     if (!this.p1.stunned && !this.p1.restrained && ac1 === ACLASS.MOVE) {
@@ -550,21 +585,16 @@ class ClocksOutGame {
 
     // ── Phase 2: Collision ───────────────────────────────────────────────────
     if (this.p1.tile === this.p2.tile) {
-      // Determine push directions: P1 pushes left (toward 0), P2 pushes right (toward max)
       const p1CanLeft  = this.p1.tile > 0
       const p2CanRight = this.p2.tile < TILE_COUNT - 1
       if (p1CanLeft && p2CanRight) {
-        // Both directions free — 50/50
         if (Math.random() < 0.5) this.p2.tile++
         else                     this.p1.tile--
       } else if (p1CanLeft) {
-        // P2 is against right wall — P1 must go left
         this.p1.tile--
       } else if (p2CanRight) {
-        // P1 is against left wall — P2 must go right
         this.p2.tile++
       }
-      // If neither can move (arena width 1) — shouldn't happen with TILE_COUNT 9
     }
 
     // Update facing after movement
@@ -573,9 +603,10 @@ class ClocksOutGame {
       this.p2.facingRight = this.p2.tile < this.p1.tile
     }
 
-    // ── Lia passive: enemy takes 1 unblockable dmg if they moved within 1 tile ─
+    // ── Lia passive ──────────────────────────────────────────────────────────
     const liaPassive = (lia, opp) => {
       if (lia.charDef?.id !== 'lia') return
+      if (opp.warping) return
       if (opp.movedThisStep && Math.abs(lia.tile - opp.tile) <= 1) {
         opp.hp        -= 1
         opp.lastDamage += 1
@@ -585,7 +616,7 @@ class ClocksOutGame {
     liaPassive(this.p1, this.p2)
     liaPassive(this.p2, this.p1)
 
-    // ── Phase 3a: ULT (fires after movement, before other attacks) ─────────────
+    // ── Phase 3a: ULT ────────────────────────────────────────────────────────
     if (a1 === ACTION.ULT && this.p1.ult >= 100 && !this.p1.stunned) {
       this.p1.charDef?.onUlt(this.p1, this.p2, this)
       this.p1.ult = 0
@@ -603,7 +634,7 @@ class ClocksOutGame {
       this._applyAttack(this.p2, a2, this.p1)
     }
 
-    // DEFEND resolution: check if a parry was triggered or whiffed
+    // DEFEND resolution
     if (this.p1.parrying) this._resolveParry(this.p1, this.p2, ac2)
     if (this.p2.parrying) this._resolveParry(this.p2, this.p1, ac1)
 
@@ -611,13 +642,12 @@ class ClocksOutGame {
     this.p2.hp = Math.max(0, this.p2.hp)
 
     // ── Andile electrify retaliation ─────────────────────────────────────────
-    // If Andile has electrify and was targeted by an adjacent ATTACK, attacker takes 1 dmg + mark
     const electrifyRetaliate = (andile, opp, oppAC) => {
       if (andile.charDef?.id !== 'andile') return
+      if (andile.warping) return
       if (andile.electrify <= 0) return
       if (oppAC !== ACLASS.ATTACK) return
       if (Math.abs(andile.tile - opp.tile) > 1) return
-      // Retaliate regardless of whether Andile blocked or took damage
       opp.hp        -= 1
       opp.lastDamage += 1
       opp.staticMarked = true
@@ -630,27 +660,23 @@ class ClocksOutGame {
     if (ac1 === ACLASS.RECOVER && !this.p1.stunned) this._applyRecover(this.p1, a1, this.p2)
     if (ac2 === ACLASS.RECOVER && !this.p2.stunned) this._applyRecover(this.p2, a2, this.p1)
 
-    // ── Phase 4b: NULL character abilities (e.g. Andile IGNITE, STATIC) ──────
+    // ── Phase 4b: NULL character abilities ───────────────────────────────────
     if (ac1 === ACLASS.NULL && !this.p1.stunned) this._applyNullAbility(this.p1, a1, this.p2)
     if (ac2 === ACLASS.NULL && !this.p2.stunned) this._applyNullAbility(this.p2, a2, this.p1)
 
     // ── Ult charge ───────────────────────────────────────────────────────────
-    // +2.5% per step passively
     this.p1.chargeUlt(2.5)
     this.p2.chargeUlt(2.5)
-    // +5% on dealing damage
     if (this.p2.lastDamage > 0) this.p1.chargeUlt(5)
     if (this.p1.lastDamage > 0) this.p2.chargeUlt(5)
-    // +5% clean block (attack came in, defender blocked, took 0)
     const wasAttack1 = ac1 === ACLASS.ATTACK
     const wasAttack2 = ac2 === ACLASS.ATTACK
     if (this.p1.blocking && this.p1.lastDamage === 0 && wasAttack2) this.p1.chargeUlt(5)
     if (this.p2.blocking && this.p2.lastDamage === 0 && wasAttack1) this.p2.chargeUlt(5)
 
-    // ── Fury tick ────────────────────────────────────────────────────────────
+    // ── Fury / electrify tick ────────────────────────────────────────────────
     if (this.p1.fury > 0) { this.p1.fury--; if (this.p1.fury === 0) this.p1.ult = 0 }
     if (this.p2.fury > 0) { this.p2.fury--; if (this.p2.fury === 0) this.p2.ult = 0 }
-    // ── Electrify tick ───────────────────────────────────────────────────────
     if (this.p1.electrify > 0) this.p1.electrify--
     if (this.p2.electrify > 0) this.p2.electrify--
 
@@ -675,20 +701,40 @@ class ClocksOutGame {
     if (this.p2.lastDamage) entry += `  ‹P2 -${this.p2.lastDamage}›`
     this.log.push(entry)
 
+    // ── Andile warp passive ───────────────────────────────────────────────────
+    // Check each fighter independently — both could be Andile
+    const checkWarp = (andile) => {
+      if (andile.charDef?.id !== 'andile') return false
+      if (andile.warpUsed) return false
+      if (andile.hp > 3) return false
+      andile.warpUsed = true
+      andile.warping  = true
+      return true
+    }
+    const warp1 = checkWarp(this.p1)
+    const warp2 = checkWarp(this.p2)
+
     this._updateHud()
     this.resolveIdx++
 
     const died = this.p1.hp <= 0 || this.p2.hp <= 0
     const done = this.resolveIdx >= this.slots || died
+
+    if ((warp1 || warp2) && !died) {
+      // Queue break: enter warp select with remaining slots
+      this._beginWarpSelect()
+      return
+    }
+
     if (done) {
       if (died) this._onDeath()
       else { this.phase = PHASE.BETWEEN; this.betweenTimer = this.BETWEEN_MS }
     }
   }
 
-  // Deals damage from attacker to defender, respecting parry immunity and block
   _dealDamage(attacker, defender, baseDmg) {
-    if (defender.parrying) return 0  // parry makes you immune to attacks
+    if (defender.parrying) return 0
+    if (defender.warping)  return 0
     const fury = attacker.fury > 0 ? 2 : 1
     const dmg  = Math.max(0, baseDmg * fury - (defender.blocking ? 1 : 0))
     defender.hp        -= dmg
@@ -706,27 +752,29 @@ class ClocksOutGame {
       f.tile += dir * 2
       f.tile = Math.max(0, Math.min(TILE_COUNT - 1, f.tile))
     }
-    // Lia PULL is ATTACK class — handled in _applyAttack
     if (action === ACTION.ENGAGE && f.charDef?.id === 'andile') {
-      // WARP: teleport to tile beside opponent, biased toward centre (tile 4)
       const et = opponent.tile
-      const centre = Math.floor(TILE_COUNT / 2)  // 4
+      const centre = Math.floor(TILE_COUNT / 2)
       let land
       if (et === 0)                  land = 1
       else if (et === TILE_COUNT-1)  land = TILE_COUNT - 2
       else if (et === centre)        land = Math.random() < 0.5 ? centre - 1 : centre + 1
-      else if (et < centre)          land = et + 1  // bias toward centre (right)
-      else                           land = et - 1  // bias toward centre (left)
-      // If landing tile is occupied by opponent, fallback to other side
+      else if (et < centre)          land = et + 1
+      else                           land = et - 1
       if (land === opponent.tile) land = et < centre ? et - 1 : et + 1
       f.tile = Math.max(0, Math.min(TILE_COUNT - 1, land))
     }
     if (action === ACTION.RECOVER && f.charDef?.id === 'andile') {
-      // BLINK: teleport to tile 4, or 3/5 if opponent is on 4
       const centre = Math.floor(TILE_COUNT / 2)
       let land = centre
       if (opponent.tile === centre) land = Math.random() < 0.5 ? centre - 1 : centre + 1
       f.tile = land
+    }
+    if (action === ACTION.REDEPLOY && f.charDef?.id === 'andile') {
+      const dest = f.redeployTile !== null ? f.redeployTile : this._andileAutoWarp(f, opponent)
+      f.tile         = dest
+      f.warping      = false
+      f.redeployTile = null
     }
     if (f.tile !== prevTile) f.movedThisStep = true
   }
@@ -734,9 +782,8 @@ class ClocksOutGame {
   _applyAttack(attacker, action, defender) {
     if (action === ACTION.JAB) {
       if (Math.abs(attacker.tile - defender.tile) <= 1) {
-        const base = attacker.electrify > 0 ? 2 : 1  // electrify +1 jab damage
+        const base = attacker.electrify > 0 ? 2 : 1
         this._dealDamage(attacker, defender, base)
-        // Andile passive: JAB always marks (even if blocked)
         if (attacker.charDef?.id === 'andile') {
           defender.staticMarked = true
         }
@@ -747,7 +794,6 @@ class ClocksOutGame {
         this._dealDamage(attacker, defender, 2)
       }
     }
-    // Lia CON_ATK — CHAIN: poison for 3 if opponent not moving; else whiff
     if (action === ACTION.CON_ATK && attacker.charDef?.id === 'lia') {
       if (Math.abs(attacker.tile - defender.tile) <= 1) {
         const oppAC = attacker === this.p1 ? this._ac2 : this._ac1
@@ -755,13 +801,10 @@ class ClocksOutGame {
           defender.poisoned = Math.max(defender.poisoned, 3)
           attacker.chargeUlt(5)
         } else {
-          // Whiff — lose next slot
           this._forceSlot(attacker, ACTION.FORCED_WAIT)
         }
       }
     }
-
-    // Lia SP_ATK — DEBUFF: 4 tile range, stun next slot if opponent declared MOVE
     if (action === ACTION.SP_ATK && attacker.charDef?.id === 'lia') {
       if (Math.abs(attacker.tile - defender.tile) <= 4) {
         const oppAC = attacker === this.p1 ? this._ac2 : this._ac1
@@ -769,22 +812,17 @@ class ClocksOutGame {
           this._forceSlot(defender, ACTION.FORCED_WAIT)
           attacker.chargeUlt(5)
         }
-        // If opponent wasn't moving, DEBUFF does nothing (still parryable)
       }
     }
-
-    // Lia ENGAGE — PULL: 4 tile range, drag opponent 1 tile toward Lia
     if (action === ACTION.ENGAGE && attacker.charDef?.id === 'lia') {
       if (Math.abs(attacker.tile - defender.tile) <= 4) {
         const prevTile = defender.tile
-        const dir = attacker.tile > defender.tile ? 1 : -1  // toward Lia
+        const dir = attacker.tile > defender.tile ? 1 : -1
         const target = Math.max(0, Math.min(TILE_COUNT - 1, defender.tile + dir))
-        // Never pull onto Lia's own tile
         if (target !== attacker.tile) {
           defender.tile = target
           if (defender.tile !== prevTile) {
             defender.movedThisStep = true
-            // Passive damage if pulled within 1 tile
             if (Math.abs(attacker.tile - defender.tile) <= 1) {
               defender.hp        -= 1
               defender.lastDamage += 1
@@ -794,19 +832,75 @@ class ClocksOutGame {
         }
       }
     }
-
   }
 
-  // Handles NULL-class character abilities that fire after attacks/recover
+  _andileAutoWarp(andile, opponent) {
+    const et = opponent.tile
+    const centre = Math.floor(TILE_COUNT / 2)
+    if (et < centre)       return TILE_COUNT - 1
+    if (et > centre)       return 0
+    return Math.random() < 0.5 ? 0 : TILE_COUNT - 1
+  }
+
+  // ── Warp select ──────────────────────────────────────────────────────────────
+  // Called after a resolve step triggers Andile's passive.
+  // resolveIdx has already been incremented, so it points to the first unplayed slot.
+  // We preserve the already-resolved prefix and open a new input window for the tail.
+  _beginWarpSelect() {
+    const remaining  = this.slots - this.resolveIdx
+    const windowSize = remaining > 0 ? remaining : this.slots
+
+    // Truncate queues to the resolved prefix — keep history, clear unplayed tail
+    this.p1.queue = this.p1.queue.slice(0, this.resolveIdx)
+    this.p2.queue = this.p2.queue.slice(0, this.resolveIdx)
+    this.p1.locked = false
+    this.p2.locked = false
+    this.p1.nextQueuePrefix = []
+    this.p2.nextQueuePrefix = []
+
+    // Reset each warping Andile's deploy choice
+    if (this.p1.warping) this.p1.redeployTile = null
+    if (this.p2.warping) this.p2.redeployTile = null
+
+    this._warpWindowSize = windowSize
+
+    // If warp triggered on the last slot, this is effectively a fresh sequence
+    if (remaining <= 0) this.resolveIdx = 0
+
+    this.phase    = PHASE.WARP_SELECT
+    this.timeLeft = this.timerS * 1000
+    this.lastTick = null
+    this.log      = []
+  }
+
+  _commitWarpSelect(timedOut = false) {
+    const target = this.resolveIdx + this._warpWindowSize
+
+    // Auto-warp any Andile who didn't pick a tile in time
+    const autoWarpIfNeeded = (f, opp) => {
+      if (!f.warping) return
+      if (f.redeployTile === null) f.redeployTile = this._andileAutoWarp(f, opp)
+    }
+    autoWarpIfNeeded(this.p1, this.p2)
+    autoWarpIfNeeded(this.p2, this.p1)
+
+    // Pad both queues to the target length with WAIT
+    while (this.p1.queue.length < target) this.p1.queue.push(ACTION.WAIT)
+    while (this.p2.queue.length < target) this.p2.queue.push(ACTION.WAIT)
+
+    this.p1.locked = true
+    this.p2.locked = true
+    this._resumeResolve()
+  }
+
+  // ── NULL-class character abilities ────────────────────────────────────────────
   _applyNullAbility(attacker, action, defender) {
-    // Andile SP_ATK — STATIC: 2 tile range, apply mark
     if (action === ACTION.SP_ATK && attacker.charDef?.id === 'andile') {
       if (Math.abs(attacker.tile - defender.tile) <= 2) {
         defender.staticMarked = true
         attacker.chargeUlt(5)
       }
     }
-    // Andile CON_ATK — IGNITE: 2 tile range, consume mark, deal 1 unblockable dmg, stun next slot
     if (action === ACTION.CON_ATK && attacker.charDef?.id === 'andile') {
       if (defender.staticMarked && Math.abs(attacker.tile - defender.tile) <= 2) {
         defender.staticMarked = false
@@ -818,9 +912,9 @@ class ClocksOutGame {
     }
   }
 
-  // Forces a slot in fighter's current or next queue to a given action
+  // Forces the NEXT slot in the queue to a given action
   _forceSlot(fighter, action) {
-    const nextIdx = this.resolveIdx  // resolveIdx not yet incremented at call time
+    const nextIdx = this.resolveIdx + 1
     if (nextIdx < this.slots) {
       fighter.queue[nextIdx] = action
     } else {
@@ -831,20 +925,16 @@ class ClocksOutGame {
 
   _resolveParry(parrier, opponent, oppActionClass) {
     if (oppActionClass === ACLASS.ATTACK) {
-      // Parry triggered: immune (already prevented by _dealDamage parry check)
-      // Deal parry damage back
       const parryDmg = parrier.fury > 0 ? 2 : 1
       opponent.hp        -= parryDmg
       opponent.lastDamage += parryDmg
       parrier.chargeUlt(5)
     } else {
-      // Parry whiffed: force next slot to WAIT
       this._forceSlot(parrier, ACTION.FORCED_WAIT)
     }
   }
 
   _applyRecover(fighter, action, opponent) {
-    // ULT is handled in Phase 3a (post-movement)
     if (action === ACTION.RECOVER) {
       fighter.charDef?.onResolveStep(fighter, action, opponent, this)
     }
@@ -875,7 +965,6 @@ class ClocksOutGame {
     if (this.phase === PHASE.CHAR_P1 || this.phase === PHASE.CHAR_P2) {
       const pIdx = this.phase === PHASE.CHAR_P1 ? 0 : 1
       if (this.charInfoOpen) {
-        // Info popup open: Enter confirms, Escape/Backspace closes
         if (code === 'Enter') { this._confirmChar(pIdx, this.charSelectIdx[pIdx]); e.preventDefault() }
         if (code === 'Escape' || code === 'Backspace') { this.charInfoOpen = false; e.preventDefault() }
         return
@@ -883,7 +972,6 @@ class ClocksOutGame {
       if (code === 'ArrowLeft')  { this.charSelectIdx[pIdx] = (this.charSelectIdx[pIdx] - 1 + CHARACTERS.length) % CHARACTERS.length; e.preventDefault() }
       if (code === 'ArrowRight') { this.charSelectIdx[pIdx] = (this.charSelectIdx[pIdx] + 1) % CHARACTERS.length; e.preventDefault() }
       if (code === 'Enter') {
-        // First Enter: open info if char has info, else confirm directly
         const char = CHARACTERS[this.charSelectIdx[pIdx]]
         if (char.info) { this.charInfoOpen = true } else { this._confirmChar(pIdx, this.charSelectIdx[pIdx]) }
         e.preventDefault()
@@ -891,6 +979,7 @@ class ClocksOutGame {
       if (code === 'Backspace' && pIdx === 1) { this.phase = PHASE.CHAR_P1; this.charInfoOpen = false; e.preventDefault() }
       return
     }
+
     if (this.phase === PHASE.SETOVER) {
       if (code === 'Space' || code === 'Enter') {
         e.preventDefault()
@@ -898,12 +987,107 @@ class ClocksOutGame {
       }
       return
     }
+
+    // ── WARP_SELECT input ────────────────────────────────────────────────────
+    if (this.phase === PHASE.WARP_SELECT) {
+      // P1 input
+      if (P1_KEY_MAP[code] !== undefined) {
+        const btnIdx = P1_KEY_MAP[code]
+        if (this.p1.warping) {
+          // First keypress (1-9) sets deploy tile and fills that slot with REDEPLOY
+          if (this.p1.redeployTile === null && btnIdx >= 1) {
+            this.p1.redeployTile = btnIdx - 1
+            this.p1.queue.push(ACTION.REDEPLOY)
+            if (this.p1.queue.length >= this._inputSlotTarget) this.p1.locked = true
+          } else if (this.p1.redeployTile !== null && this.p1.queue.length < this._inputSlotTarget) {
+            this._pushAction(this.p1, btnIdx)
+          }
+        } else {
+          this._pushAction(this.p1, btnIdx)
+        }
+        e.preventDefault()
+      }
+      if (code === 'Backspace' || code === 'Minus') {
+        if (this.p1.warping) {
+          if (this.p1.queue.length <= this.resolveIdx + 1) {
+            // Undo the REDEPLOY slot — also clear the tile choice
+            if (this.p1.queue.length > this.resolveIdx) {
+              this.p1.queue.pop()
+              this.p1.redeployTile = null
+            }
+          } else {
+            this.p1.queue.pop()
+          }
+          this.p1.locked = false
+        } else {
+          this._undoAction(this.p1)
+        }
+        e.preventDefault()
+      }
+
+      // P2 input
+      if (P2_KEY_MAP[code] !== undefined) {
+        const raw    = P2_KEY_MAP[code]
+        const btnIdx = p2Action(raw)
+        if (this.p2.warping) {
+          if (this.p2.redeployTile === null && raw >= 1) {
+            this.p2.redeployTile = raw - 1
+            this.p2.queue.push(ACTION.REDEPLOY)
+            if (this.p2.queue.length >= this._inputSlotTarget) this.p2.locked = true
+          } else if (this.p2.redeployTile !== null && this.p2.queue.length < this._inputSlotTarget) {
+            this._pushAction(this.p2, btnIdx)
+          }
+        } else {
+          this._pushAction(this.p2, btnIdx)
+        }
+        e.preventDefault()
+      }
+      if (code === 'NumpadDecimal' || code === 'NumpadSubtract') {
+        if (this.p2.warping) {
+          if (this.p2.queue.length <= this.resolveIdx + 1) {
+            if (this.p2.queue.length > this.resolveIdx) {
+              this.p2.queue.pop()
+              this.p2.redeployTile = null
+            }
+          } else {
+            this.p2.queue.pop()
+          }
+          this.p2.locked = false
+        } else {
+          this._undoAction(this.p2)
+        }
+        e.preventDefault()
+      }
+
+      // Check if both players are ready to commit
+      this._checkWarpCommit()
+      return
+    }
+
     if (this.phase !== PHASE.INPUT) return
 
     if (P1_KEY_MAP[code] !== undefined) { this._pushAction(this.p1, P1_KEY_MAP[code]); e.preventDefault() }
     if (P2_KEY_MAP[code] !== undefined) { this._pushAction(this.p2, p2Action(P2_KEY_MAP[code])); e.preventDefault() }
-    if (code === 'Backspace')     { this._undoAction(this.p1); e.preventDefault() }
-    if (code === 'NumpadDecimal') { this._undoAction(this.p2); e.preventDefault() }
+    if (code === 'Backspace')       { this._undoAction(this.p1); e.preventDefault() }
+    if (code === 'NumpadDecimal')   { this._undoAction(this.p2); e.preventDefault() }
+    if (code === 'Minus')           { this._undoAction(this.p1); e.preventDefault() }
+    if (code === 'NumpadSubtract')  { this._undoAction(this.p2); e.preventDefault() }
+  }
+
+  // Check whether both sides have finished their warp-select input
+  _checkWarpCommit() {
+    const target = this._inputSlotTarget
+
+    const p1Ready = this.p1.warping
+      ? (this.p1.redeployTile !== null && this.p1.queue.length >= target)
+      : (this.p1.queue.length >= target)
+    const p2Ready = this.p2.warping
+      ? (this.p2.redeployTile !== null && this.p2.queue.length >= target)
+      : (this.p2.queue.length >= target)
+
+    if (p1Ready && !this.p1.locked) this.p1.locked = true
+    if (p2Ready && !this.p2.locked) this.p2.locked = true
+    if (p1Ready && p2Ready) this._commitWarpSelect()
   }
 
   // ── Touch / click input ──────────────────────────────────────────────────────
@@ -917,11 +1101,9 @@ class ClocksOutGame {
     const W  = this.canvas.width
     const H  = this.canvas.height
 
-    // Character select: tap a card
     if (this.phase === PHASE.CHAR_P1 || this.phase === PHASE.CHAR_P2) {
       const pIdx = this.phase === PHASE.CHAR_P1 ? 0 : 1
       if (this.charInfoOpen) {
-        // Tap anywhere on popup to confirm, tap outside to close
         const pw = Math.min(W * 0.9, 420), ph = Math.min(H * 0.75, 500)
         const px = (W - pw) / 2, py = (H - ph) / 2
         if (cx >= px && cx <= px + pw && cy >= py && cy <= py + ph) {
@@ -934,7 +1116,6 @@ class ClocksOutGame {
       const hit = this._charSelectHitTest(cx, cy, W, H)
       if (hit !== null) {
         if (hit === this.charSelectIdx[pIdx]) {
-          // Already selected — open info or confirm if no info
           const char = CHARACTERS[hit]
           if (char.info) { this.charInfoOpen = true } else { this._confirmChar(pIdx, hit) }
         } else {
@@ -944,39 +1125,105 @@ class ClocksOutGame {
       return
     }
 
-    // Setover: tap anywhere
     if (this.phase === PHASE.SETOVER) {
       if (typeof exitGame === 'function') exitGame(); else this.reset()
       return
     }
 
-    if (this.phase !== PHASE.INPUT) return
-
     const L = computeLayout(W, H, this.slots)
 
-    // P2 strip: top (rotated 180° visually)
-    if (cy >= 0 && cy < L.btnH) {
-      const btnIdx = this._btnHitTest(L, cx, cy, 0, true)
-      if (btnIdx !== null) this._pushAction(this.p2, p2Action(btnIdx))
+    // ── WARP_SELECT touch ────────────────────────────────────────────────────
+    if (this.phase === PHASE.WARP_SELECT) {
+      // P1 strip (bottom)
+      if (cy >= L.p1BtnY) {
+        const btnIdx = this._btnHitTest(L, cx, cy, L.p1BtnY, false)
+        if (btnIdx !== null) {
+          if (this.p1.warping) {
+            if (this.p1.redeployTile === null && btnIdx >= 1) {
+              this.p1.redeployTile = btnIdx - 1
+              this.p1.queue.push(ACTION.REDEPLOY)
+              if (this.p1.queue.length >= this._inputSlotTarget) this.p1.locked = true
+            } else if (this.p1.redeployTile !== null && this.p1.queue.length < this._inputSlotTarget) {
+              this._pushAction(this.p1, btnIdx)
+            }
+          } else {
+            this._pushAction(this.p1, btnIdx)
+          }
+        }
+      }
+      // P1 undo bar
+      if (cy >= L.p1UndoY && cy < L.p1BtnY) {
+        if (this.p1.warping) {
+          if (this.p1.queue.length <= this.resolveIdx + 1) {
+            if (this.p1.queue.length > this.resolveIdx) { this.p1.queue.pop(); this.p1.redeployTile = null }
+          } else { this.p1.queue.pop() }
+          this.p1.locked = false
+        } else { this._undoAction(this.p1) }
+      }
+
+      // P2 strip (top)
+      if (cy < L.p2BtnY + L.btnH) {
+        const btnIdx = this._btnHitTest(L, cx, cy, L.p2BtnY, true)
+        if (btnIdx !== null) {
+          const raw = btnIdx  // raw before p2Action flip
+          if (this.p2.warping) {
+            if (this.p2.redeployTile === null && raw >= 1) {
+              this.p2.redeployTile = raw - 1
+              this.p2.queue.push(ACTION.REDEPLOY)
+              if (this.p2.queue.length >= this._inputSlotTarget) this.p2.locked = true
+            } else if (this.p2.redeployTile !== null && this.p2.queue.length < this._inputSlotTarget) {
+              this._pushAction(this.p2, p2Action(raw))
+            }
+          } else {
+            this._pushAction(this.p2, p2Action(raw))
+          }
+        }
+      }
+      // P2 undo bar
+      if (cy >= L.p2UndoY && cy < L.p2UndoY + L.undoH) {
+        if (this.p2.warping) {
+          if (this.p2.queue.length <= this.resolveIdx + 1) {
+            if (this.p2.queue.length > this.resolveIdx) { this.p2.queue.pop(); this.p2.redeployTile = null }
+          } else { this.p2.queue.pop() }
+          this.p2.locked = false
+        } else { this._undoAction(this.p2) }
+      }
+
+      this._checkWarpCommit()
       return
     }
 
-    // P1 strip: bottom
-    if (cy >= H - L.btnH && cy < H) {
-      const btnIdx = this._btnHitTest(L, cx, cy, H - L.btnH, false)
+    if (this.phase !== PHASE.INPUT) return
+
+    // P2 button strip
+    if (cy >= L.p2BtnY && cy < L.p2BtnY + L.btnH) {
+      const btnIdx = this._btnHitTest(L, cx, cy, L.p2BtnY, true)
+      if (btnIdx !== null) this._pushAction(this.p2, p2Action(btnIdx))
+      return
+    }
+    // P2 undo bar
+    if (cy >= L.p2UndoY && cy < L.p2UndoY + L.undoH) {
+      this._undoAction(this.p2)
+      return
+    }
+    // P1 undo bar
+    if (cy >= L.p1UndoY && cy < L.p1UndoY + L.undoH) {
+      this._undoAction(this.p1)
+      return
+    }
+    // P1 button strip
+    if (cy >= L.p1BtnY && cy < H) {
+      const btnIdx = this._btnHitTest(L, cx, cy, L.p1BtnY, false)
       if (btnIdx !== null) this._pushAction(this.p1, btnIdx)
       return
     }
   }
 
-  // Maps a canvas tap (cx, cy) within a button strip to a button index 0-9.
-  // stripY = top of the strip in canvas coords (before any rotation).
-  // For P2 (isP2=true) the strip is rotated 180°, so we mirror both axes.
   _btnHitTest(L, cx, cy, stripY, isP2) {
     const { W, btnH, btnRowH, btnW, mobile } = L
-    // Transform click into strip-local coords, accounting for rotation
     let lx = isP2 ? W - cx : cx
-    let ly = isP2 ? btnH - (cy - stripY) : cy - stripY
+    const rawLy = cy - stripY
+    let ly = isP2 ? btnH - 1 - rawLy : rawLy
     if (ly < 0 || ly >= btnH) return null
     if (lx < 0 || lx >= W)   return null
     if (mobile) {
@@ -991,28 +1238,38 @@ class ClocksOutGame {
   }
 
   _pushAction(fighter, actionId) {
-    if (fighter.queue.length >= this.slots) return
-    // Takashi SP_ATK inserts CHARGE + HEAVY as two slots
+    const target = this._inputSlotTarget
+    if (fighter.queue.length >= target) return
     if (actionId === ACTION.SP_ATK && fighter.charDef?.id === 'takashi') {
-      const free = this.slots - fighter.queue.length
+      const free = target - fighter.queue.length
       if (free >= 2) {
         fighter.queue.push(ACTION.CHARGE, ACTION.HEAVY)
       } else if (free === 1) {
         fighter.queue.push(ACTION.CHARGE)
         fighter.nextQueuePrefix = [ACTION.HEAVY]
       }
-      // If no free slots, ignore
     } else {
       fighter.queue.push(actionId)
     }
-    if (fighter.queue.length >= this.slots) this._lockIn(fighter)
+    if (fighter.queue.length >= target) this._lockIn(fighter)
   }
 
   _undoAction(fighter) {
-    if (fighter.queue.length > 0) { fighter.queue.pop(); fighter.locked = false }
+    if (fighter.queue.length === 0) return
+    const last = fighter.queue[fighter.queue.length - 1]
+    fighter.queue.pop()
+    if (last === ACTION.HEAVY &&
+        fighter.queue.length > 0 &&
+        fighter.queue[fighter.queue.length - 1] === ACTION.CHARGE) {
+      fighter.queue.pop()
+    }
+    if (last === ACTION.CHARGE && fighter.nextQueuePrefix[0] === ACTION.HEAVY) {
+      fighter.nextQueuePrefix.shift()
+    }
+    fighter.locked = false
   }
 
-  // ── HUD — all drawn on canvas now, these are no-ops kept for call sites ──────
+  // ── HUD ──────────────────────────────────────────────────────────────────────
   _updateHud() {}
   _updateTimerDisplay() {}
 
@@ -1037,6 +1294,10 @@ class ClocksOutGame {
       this.betweenTimer -= dt
       if (this.betweenTimer <= 0) this._startSequence()
     }
+    if (this.phase === PHASE.WARP_SELECT) {
+      this.timeLeft = Math.max(0, this.timeLeft - dt)
+      if (this.timeLeft <= 0) this._commitWarpSelect(true)
+    }
     if (this.phase === PHASE.DEAD) {
       this.deadTimer -= dt
       if (this.deadTimer <= 0) this._nextMatch()
@@ -1059,7 +1320,9 @@ class ClocksOutGame {
 
     const L = computeLayout(W, H, this.slots)
     this._drawButtonStrip(L, this.p2, true)
+    this._drawUndoBar(L, this.p2, true)
     this._drawButtonStrip(L, this.p1, false)
+    this._drawUndoBar(L, this.p1, false)
     this._drawTimer(L, true)
     this._drawQueue(L, this.p2, L.p2QueueY, true)
     this._drawHud(L, this.p2, L.p2HudY, true)
@@ -1076,9 +1339,9 @@ class ClocksOutGame {
   _drawButtonStrip(L, fighter, isP2) {
     const { ctx }                          = this
     const { W, H, btnH, btnRowH, btnW, mobile } = L
-    const y       = isP2 ? 0 : H - btnH
+    const y       = isP2 ? L.p2BtnY : L.p1BtnY
     const col     = fighter.colour
-    const isInput = this.phase === PHASE.INPUT
+    const isInput = this.phase === PHASE.INPUT || this.phase === PHASE.WARP_SELECT
 
     ctx.save()
     if (isP2) {
@@ -1088,8 +1351,6 @@ class ClocksOutGame {
     }
 
     for (let i = 0; i < BTN_COUNT; i++) {
-      // Mobile: 2 rows of 5. Row 0 = btns 0-4 (top), Row 1 = btns 5-9 (bottom)
-      // Desktop: 1 row of 10
       const col_ = mobile ? i % 5 : i
       const row_ = mobile ? Math.floor(i / 5) : 0
       const bx   = col_ * btnW
@@ -1100,31 +1361,25 @@ class ClocksOutGame {
       const isUlt  = i === 9
       const ultRdy = fighter.ult >= 100
 
-      // Background
       ctx.fillStyle = (isUlt && ultRdy && isInput) ? C.ult + '22' : C.surface
       ctx.fillRect(bx, by, bw, bh)
 
-      // Border
       ctx.strokeStyle = isUlt && ultRdy ? C.ult : (isInput ? col + '55' : C.border)
       ctx.lineWidth   = 1
       ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1)
 
-      // Colour strip along inner edge (bottom of strip = closest to arena after rotation)
-      // On mobile row 1 (btns 5-9) is the inner row; on desktop the whole strip is inner
       const isInnerRow = !mobile || row_ === 1
       if (isInnerRow) {
         ctx.fillStyle = isInput ? col : C.muted + '33'
         ctx.fillRect(bx, by + bh - 3, bw, 3)
       }
 
-      // Number index (small, outer edge = away from arena)
       ctx.fillStyle    = isInput ? col + '77' : C.muted + '33'
       ctx.font         = `${Math.max(7, bw * 0.15)}px 'Courier New', monospace`
       ctx.textAlign    = 'center'
       ctx.textBaseline = 'top'
       ctx.fillText(i, bx + bw / 2, by + 3)
 
-      // Label
       const labelCol = !isInput        ? C.muted + '44'
                      : isUlt && ultRdy ? C.ult
                      : col
@@ -1134,7 +1389,6 @@ class ClocksOutGame {
       ctx.fillText(BTN_LABEL[i], bx + bw / 2, by + bh * 0.62)
     }
 
-    // Player label — far left of strip (= far right from P2's rotated view)
     ctx.fillStyle    = col
     ctx.font         = `bold ${Math.max(8, btnRowH * 0.28)}px 'Courier New', monospace`
     ctx.textAlign    = 'left'
@@ -1144,14 +1398,44 @@ class ClocksOutGame {
     ctx.restore()
   }
 
+  // ── Undo bar ─────────────────────────────────────────────────────────────────
+  _drawUndoBar(L, fighter, isP2) {
+    const { ctx }        = this
+    const { W, undoH }   = L
+    const y              = isP2 ? L.p2UndoY : L.p1UndoY
+    const col            = fighter.colour
+    const isInput        = this.phase === PHASE.INPUT || this.phase === PHASE.WARP_SELECT
+
+    ctx.save()
+    if (isP2) {
+      ctx.translate(W / 2, y + undoH / 2)
+      ctx.rotate(Math.PI)
+      ctx.translate(-W / 2, -(y + undoH / 2))
+    }
+
+    ctx.fillStyle = C.surface2
+    ctx.fillRect(0, y, W, undoH)
+    ctx.strokeStyle = isInput ? col + '66' : C.border
+    ctx.lineWidth   = 1
+    ctx.strokeRect(0, y, W, undoH)
+    ctx.fillStyle = isInput ? col : C.muted + '33'
+    ctx.fillRect(0, y, 3, undoH)
+    ctx.fillStyle    = isInput ? col : C.muted + '44'
+    ctx.font         = `bold ${Math.max(7, undoH * 0.52)}px 'Courier New', monospace`
+    ctx.textAlign    = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(`P${fighter.id}  UNDO  ←`, W / 2, y + undoH / 2)
+
+    ctx.restore()
+  }
+
   // ── Timer strip ──────────────────────────────────────────────────────────────
-  // Drawn between btn strip and queue; flipped=true for P2 (sits above P2 queue)
   _drawTimer(L, flipped) {
-    const { ctx }            = this
-    const { W, timerH }      = L
-    const y                  = flipped ? L.p2TimerY : L.p1TimerY
-    const isInput            = this.phase === PHASE.INPUT
-    const isBetween          = this.phase === PHASE.BETWEEN
+    const { ctx }       = this
+    const { W, timerH } = L
+    const y             = flipped ? L.p2TimerY : L.p1TimerY
+    const isInput       = this.phase === PHASE.INPUT || this.phase === PHASE.WARP_SELECT
+    const isBetween     = this.phase === PHASE.BETWEEN
 
     ctx.save()
     if (flipped) {
@@ -1160,11 +1444,9 @@ class ClocksOutGame {
       ctx.translate(-W / 2, -(y + timerH / 2))
     }
 
-    // Background
     ctx.fillStyle = C.surface
     ctx.fillRect(0, y, W, timerH)
 
-    // Progress bar (full width)
     if (isInput) {
       const pct = this.timeLeft / (this.timerS * 1000)
       ctx.fillStyle = pct > 0.4 ? C.p1 + '55' : C.dmg + '55'
@@ -1176,14 +1458,12 @@ class ClocksOutGame {
       ctx.fillRect(0, y, W * pct, timerH)
     }
 
-    // Border
     ctx.strokeStyle = C.border; ctx.lineWidth = 1
     ctx.strokeRect(0, y, W, timerH)
 
     const mid = y + timerH / 2
     ctx.textBaseline = 'middle'
 
-    // Timer value (left)
     if (isInput) {
       const secs = (this.timeLeft / 1000).toFixed(1)
       ctx.fillStyle = this.timeLeft < 2000 ? C.dmg : C.accentHot
@@ -1202,7 +1482,6 @@ class ClocksOutGame {
       ctx.fillText('EXECUTING', 8, mid)
     }
 
-    // Match score (right, if Bo3/5)
     if (this.matchFmt > 1) {
       const [w1, w2] = this.roundWins
       ctx.fillStyle  = C.muted
@@ -1214,12 +1493,12 @@ class ClocksOutGame {
     ctx.restore()
   }
 
-  // ── HUD strip: name · HP bar · ult bar · match score ────────────────────────
+  // ── HUD strip ────────────────────────────────────────────────────────────────
   _drawHud(L, fighter, y, flipped) {
-    const { ctx }        = this
-    const { W, hudH }    = L
-    const col            = fighter.colour
-    const ultRdy         = fighter.ult >= 100
+    const { ctx }     = this
+    const { W, hudH } = L
+    const col         = fighter.colour
+    const ultRdy      = fighter.ult >= 100
 
     ctx.save()
     if (flipped) {
@@ -1228,13 +1507,11 @@ class ClocksOutGame {
       ctx.translate(-W / 2, -(y + hudH / 2))
     }
 
-    // Background
     ctx.fillStyle = C.surface
     ctx.fillRect(0, y, W, hudH)
     ctx.strokeStyle = C.border; ctx.lineWidth = 1
     ctx.strokeRect(0, y, W, hudH)
 
-    // Divide hudH: top half = HP bar, bottom half = ult bar, with name and score as text
     const innerPad = 3
     const barAreaH = hudH - innerPad * 2
     const hpH      = Math.floor(barAreaH * 0.52)
@@ -1242,40 +1519,35 @@ class ClocksOutGame {
     const hpY      = y + innerPad
     const ultBarY  = hpY + hpH + 2
 
-    const nameW   = W * 0.28
-    const scoreW  = W * 0.1
-    const barX    = nameW + 6
-    const barW    = W - barX - scoreW - 10
+    const nameW = W * 0.28
+    const scoreW = W * 0.1
+    const barX  = nameW + 6
+    const barW  = W - barX - scoreW - 10
 
-    // ── Name ──
     ctx.fillStyle    = col
     ctx.font         = `bold ${Math.max(7, hudH * 0.38)}px 'Courier New', monospace`
     ctx.textAlign    = 'left'
     ctx.textBaseline = 'middle'
     ctx.fillText(`P${fighter.id}: ${fighter.name}`, innerPad + 4, y + hudH / 2)
 
-    // ── HP bar ──
     ctx.fillStyle = C.surface2;  ctx.fillRect(barX, hpY, barW, hpH)
     ctx.fillStyle = fighter.hp > MAX_HP * 0.4 ? col : C.dmg
     ctx.fillRect(barX, hpY, barW * Math.max(0, fighter.hp / MAX_HP), hpH)
     ctx.strokeStyle = C.border; ctx.lineWidth = 1
     ctx.strokeRect(barX, hpY, barW, hpH)
-    // HP number
     ctx.fillStyle    = C.accentHot
     ctx.font         = `bold ${Math.max(6, hpH * 0.75)}px 'Courier New', monospace`
     ctx.textAlign    = 'right'
     ctx.textBaseline = 'middle'
     ctx.fillText(`${Math.max(0, fighter.hp)}HP`, barX + barW - 3, hpY + hpH / 2)
 
-    // ── Ult bar ──
-    const inFury    = fighter.fury > 0
-    const ultFillW  = inFury ? barW * (fighter.fury / 4) : barW * (fighter.ult / 100)
+    const inFury   = fighter.fury > 0
+    const ultFillW = inFury ? barW * (fighter.fury / 4) : barW * (fighter.ult / 100)
     const ultColour = (inFury || ultRdy) ? C.ult : col + '77'
     ctx.fillStyle = C.surface2; ctx.fillRect(barX, ultBarY, barW, ultH)
-    ctx.fillStyle = ultColour; ctx.fillRect(barX, ultBarY, ultFillW, ultH)
+    ctx.fillStyle = ultColour;  ctx.fillRect(barX, ultBarY, ultFillW, ultH)
     ctx.strokeStyle = (inFury || ultRdy) ? C.ult : C.border; ctx.lineWidth = 1
     ctx.strokeRect(barX, ultBarY, barW, ultH)
-    // Ult label
     ctx.fillStyle    = (inFury || ultRdy) ? C.ult : C.muted
     ctx.font         = `${Math.max(5, ultH * 0.72)}px 'Courier New', monospace`
     ctx.textAlign    = 'right'
@@ -1283,7 +1555,6 @@ class ClocksOutGame {
     const ultLabel = inFury ? `FURY ${fighter.fury}` : ultRdy ? 'ULT READY' : `ULT ${Math.floor(fighter.ult)}%`
     ctx.fillText(ultLabel, barX + barW - 3, ultBarY + ultH / 2)
 
-    // ── Match score ── (far right)
     if (this.matchFmt > 1) {
       const [w1, w2] = this.roundWins
       ctx.fillStyle    = C.muted
@@ -1298,9 +1569,9 @@ class ClocksOutGame {
 
   // ── Queue strip ──────────────────────────────────────────────────────────────
   _drawQueue(L, fighter, y, flipped) {
-    const { ctx }                           = this
+    const { ctx }                             = this
     const { W, slotSz, slotGap, queueStartX } = L
-    const col                               = fighter.colour
+    const col       = fighter.colour
     const isResolving = this.phase === PHASE.RESOLVE || this.phase === PHASE.BETWEEN
       || this.phase === PHASE.DEAD || this.phase === PHASE.SETOVER
     const activeIdx = this.resolveIdx - 1
@@ -1335,7 +1606,6 @@ class ClocksOutGame {
         ctx.font      = `${slotSz * 0.3}px 'Courier New', monospace`
         ctx.fillText(i + 1, x + slotSz / 2, y + slotSz / 2)
       } else if (!isResolving) {
-        // Hidden — dot only
         ctx.fillStyle = col + 'cc'
         ctx.beginPath()
         ctx.arc(x + slotSz / 2, y + slotSz / 2, slotSz * 0.15, 0, Math.PI * 2)
@@ -1348,7 +1618,6 @@ class ClocksOutGame {
       }
     }
 
-    // Locked badge
     if (fighter.locked && this.phase === PHASE.INPUT) {
       const endX = queueStartX + this.slots * (slotSz + slotGap)
       ctx.fillStyle = col + '77'; ctx.font = `7px 'Courier New', monospace`
@@ -1361,9 +1630,9 @@ class ClocksOutGame {
 
   // ── Arena ────────────────────────────────────────────────────────────────────
   _drawArena(L) {
-    const { ctx }            = this
+    const { ctx }                    = this
     const { W, arenaY, arenaH, tileW } = L
-    const centre             = Math.floor(TILE_COUNT / 2)
+    const centre                     = Math.floor(TILE_COUNT / 2)
 
     for (let i = 0; i < TILE_COUNT; i++) {
       const x  = i * tileW
@@ -1385,10 +1654,9 @@ class ClocksOutGame {
   }
 
   // ── Fighters ─────────────────────────────────────────────────────────────────
-  // Each fighter shows (stacked above the square): name / HP bar / ult meter / [square]
   _drawFighters(L) {
-    const { ctx }                      = this
-    const { arenaY, arenaH, tileW }    = L
+    const { ctx }                   = this
+    const { arenaY, arenaH, tileW } = L
 
     const draw = (f) => {
       const col    = f.colour
@@ -1401,31 +1669,26 @@ class ClocksOutGame {
       ctx.save()
       ctx.translate(cx, cy)
 
-      // Glow
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.3)
       g.addColorStop(0, col + '28'); g.addColorStop(1, 'transparent')
       ctx.fillStyle = g
       ctx.beginPath(); ctx.arc(0, 0, size * 1.3, 0, Math.PI * 2); ctx.fill()
 
-      // Body
       ctx.fillStyle   = flashA > 0 ? `rgba(220,90,90,${flashA * 0.7})` : col + '1a'
       ctx.fillRect(-half, -half, size, size)
       ctx.strokeStyle = flashA > 0 ? `rgba(255,140,140,${0.5 + flashA * 0.5})` : col
       ctx.lineWidth   = 2; ctx.strokeRect(-half, -half, size, size)
 
-      // Facing arrow
       ctx.fillStyle    = flashA > 0 ? `rgba(255,160,160,${0.7 + flashA * 0.3})` : col
       ctx.font         = `${size * 0.48}px Arial`
       ctx.textAlign    = 'center'; ctx.textBaseline = 'middle'
       ctx.fillText(f.facingRight ? '▶' : '◀', 0, 0)
 
-      // P1/P2 label above square
       ctx.fillStyle    = col
       ctx.font         = `bold ${Math.max(7, size * 0.28)}px 'Courier New', monospace`
       ctx.textAlign    = 'center'; ctx.textBaseline = 'bottom'
       ctx.fillText(`P${f.id}`, 0, -half - 2)
 
-      // Block indicator
       if (f.blocking) {
         ctx.strokeStyle = '#99ccff'; ctx.lineWidth = 2
         ctx.setLineDash([4, 3])
@@ -1433,7 +1696,6 @@ class ClocksOutGame {
         ctx.setLineDash([])
       }
 
-      // Status badges below square
       let badgeY = half + 4
       const badge = (text, c) => {
         ctx.fillStyle = c; ctx.font = `7px 'Courier New', monospace`
@@ -1456,7 +1718,7 @@ class ClocksOutGame {
   // ── Log ──────────────────────────────────────────────────────────────────────
   _drawLog(L) {
     if (!this.log.length) return
-    const { ctx }            = this
+    const { ctx }               = this
     const { W, arenaY, arenaH } = L
     const recent = this.log.slice(-3)
     const lineH  = 11
@@ -1471,8 +1733,20 @@ class ClocksOutGame {
 
   // ── Phase UI ─────────────────────────────────────────────────────────────────
   _drawPhaseUI(L) {
-    const { ctx }   = this
+    const { ctx }          = this
     const { W, H, arenaY } = L
+
+    if (this.phase === PHASE.WARP_SELECT) {
+      // Show a banner for each warping Andile
+      const pct = this.timeLeft / (this.timerS * 1000)
+      ctx.fillStyle = pct > 0.4 ? C.p1 + '55' : C.dmg + '55'
+      ctx.fillRect(0, L.arenaY - 3, W * pct, 2)
+
+      ctx.fillStyle    = C.accentHot
+      ctx.font         = `bold ${Math.min(W * 0.06, 28)}px 'Arial Narrow', Arial, sans-serif`
+      ctx.textAlign    = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText('Queue Break!', W / 2, L.arenaY + L.arenaH / 2)
+    }
 
     if (this.phase === PHASE.DEAD || this.phase === PHASE.SETOVER) {
       ctx.fillStyle = 'rgba(13,13,15,0.86)'
@@ -1621,15 +1895,12 @@ class ClocksOutGame {
       const char  = CHARACTERS[selIdx]
       const info  = char.info ?? []
       const pw    = Math.min(W * 0.9, 420)
-      const lx    = px => px + 12
       const fontSize  = 10
-      const lineH     = 14   // tight fixed line height
-      const indentW   = 6    // extra indent for wrapped continuation lines
+      const lineH     = 14
       const maxTextW  = (pw) => pw - 28
 
-      // Measure total height needed by doing a dry run
       const measureLines = (pww) => {
-        let h = 54 + 8  // header + divider + padding
+        let h = 54 + 8
         ctx.font = `${fontSize}px 'Courier New', monospace`
         info.forEach(line => {
           const colon = line.indexOf(':')
@@ -1648,28 +1919,23 @@ class ClocksOutGame {
             h += lineH + 4
           }
         })
-        return h + 28  // bottom hint
+        return h + 28
       }
 
-      const ph = Math.min(H * 0.88, measureLines(pw))
+      const ph  = Math.min(H * 0.88, measureLines(pw))
       const ppx = (W - pw) / 2
       const ppy = (H - ph) / 2
 
-      // Backdrop
       ctx.fillStyle = 'rgba(13,13,15,0.88)'
       ctx.fillRect(0, 0, W, H)
 
-      // Panel
       ctx.fillStyle = C.surface
       ctx.fillRect(ppx, ppy, pw, ph)
       ctx.strokeStyle = char.colour; ctx.lineWidth = 2
       ctx.strokeRect(ppx, ppy, pw, ph)
-
-      // Colour strip top
       ctx.fillStyle = char.colour
       ctx.fillRect(ppx, ppy, pw, 4)
 
-      // Title
       ctx.fillStyle = char.colour
       ctx.font      = `bold ${Math.min(pw * 0.08, 20)}px 'Arial Narrow', Arial, sans-serif`
       ctx.textAlign = 'left'; ctx.textBaseline = 'top'
@@ -1679,27 +1945,23 @@ class ClocksOutGame {
       ctx.font      = `${fontSize}px 'Courier New', monospace`
       ctx.fillText(char.desc, ppx + 12, ppy + 30)
 
-      // Divider
       ctx.strokeStyle = C.border; ctx.lineWidth = 1
       ctx.beginPath()
       ctx.moveTo(ppx + 12, ppy + 44)
       ctx.lineTo(ppx + pw - 12, ppy + 44)
       ctx.stroke()
 
-      // Ability lines — running Y cursor
       let curY = ppy + 52
       const tlx = ppx + 12
 
       info.forEach(line => {
         const colon = line.indexOf(':')
         if (colon > -1) {
-          // Keyword in char colour
           ctx.fillStyle = char.colour
           ctx.font      = `bold ${fontSize}px 'Courier New', monospace`
           ctx.textAlign = 'left'; ctx.textBaseline = 'top'
           ctx.fillText(line.slice(0, colon + 1), tlx, curY)
           const kw    = ctx.measureText(line.slice(0, colon + 1)).width
-          // Rest in accent, word-wrapped
           ctx.fillStyle = C.accent
           ctx.font      = `${fontSize}px 'Courier New', monospace`
           const rest  = line.slice(colon + 1)
@@ -1713,13 +1975,12 @@ class ClocksOutGame {
           }
           for (const w of rest.split(' ')) {
             const test = row + w + ' '
-            // On wrap, available width resets to full panel width
             const avail2 = firstRow ? avail : maxTextW(pw)
             if (ctx.measureText(test).width > avail2 && row) { flush(row); row = w + ' ' }
             else row = test
           }
           if (row.trim()) flush(row)
-          curY += 3  // small gap between entries
+          curY += 3
         } else {
           ctx.fillStyle = C.accent
           ctx.font      = `${fontSize}px 'Courier New', monospace`
@@ -1729,7 +1990,6 @@ class ClocksOutGame {
         }
       })
 
-      // Confirm hint
       ctx.fillStyle    = pCol + 'bb'
       ctx.font         = `bold ${fontSize}px 'Courier New', monospace`
       ctx.textAlign    = 'center'
