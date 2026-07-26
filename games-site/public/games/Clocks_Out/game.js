@@ -167,7 +167,7 @@ const CHARACTERS = [
     ultName: 'FURY',
     info: [
       'PASSIVE Fighting Spirit: Heals 1hp/8acts.',
-      'SP.ATK (5) Focus Strike: Fills 2 acts: act 1 charge [NULL], act 2 heavy 1t/2dmg. [ATK]',
+      'SP.ATK (5) Focus Strike: Fills 2 acts - act 1 charge [NULL], act 2 heavy 1t/2dmg. [ATK]',
       'CON.ATK (6) Counter: If enemy would [ATK] this act, deal 1dmg and take no dmg from this attack. If the enemy would not [ATK], flinch next act [NULL]. [NULL]',
       'ENGAGE (7) Quickstep: Moves 2 tiles in direction of opponent. [MOVE]',
       'RECOVER (8) Clear the Mind: Remove all status effects. If no status, gain 5% ult charge. [RECOV]',
@@ -178,7 +178,8 @@ const CHARACTERS = [
     },
     onResolveStep(fighter, action, opponent, game) {
       // Passive: heal 1HP every 8 actions (fires after actionCount increments)
-      if (fighter.roundActionCount > 0 && fighter.roundActionCount % 6 === 0) {
+      if (fighter.roundActionCount > 0 && fighter.roundActionCount % 6 === 0
+          && !fighter.drainedThisStep) {
         fighter.hp = Math.min(MAX_HP, fighter.hp + 1)
       }
       // RECOVER / CLEANSE — called via _applyRecover
@@ -282,26 +283,16 @@ const CHARACTERS = [
     abilityNames: { 5:'BOLT', 6:'SIPHON', 7:'FADE', 8:'DRAIN' },
     ultName: 'REAP',
     info: [
-      'PASSIVE Spirit Leech: Every 6 actions, drains 1hp from enemy (unblockable). Builds heal reserve.',
-      'SP.ATK (5) Dark Bolt: Exactly 2t range. Deals 1 damage. [ATK]',
-      'CON.ATK (6) Drain: 1t. If enemy not moving, steal 1hp from them. [NULL]',
-      'ENGAGE (7) Crow Cowl: Fills 2 acts: act 1 charge [NULL], act 2 teleport 3t away from enemy [MOVE].',
-      'RECOVER (8) Siphon Arts: Spend 1 from heal reserve to heal 1hp. Does nothing if reserve empty. [NULL]',
-      'ULT (9) Trueform Summoning: 2t range. 2 damage, push enemy 2 tiles away. +1 damage if they hit a wall. [NULL]',
+      'PASSIVE Soul Leech: Every 6 actions, drains 1hp from enemy (unblockable). Builds heal reserve.',
+      'SP.ATK (5) Necrotic Bolt: Exactly 2t range. Deals 1 damage. [ATK]',
+      'CON.ATK (6) Siphon: 1t. If enemy not moving, steal 1hp from them. [NULL]',
+      'ENGAGE (7) Fade: 2 actions - act 1 charge [NULL], act 2 teleport 3t away from enemy [MOVE].',
+      'RECOVER (8) Soul Drain: Spend 1 from heal reserve to heal 1hp. Does nothing if reserve empty. [NULL]',
+      'ULT (9) Reap: 2t range. 2 damage, push enemy 2 tiles away. +1 damage if they hit a wall. [NULL]',
     ],
     onSequenceStart(fighter, game) {},
     onResolveStep(fighter, action, opponent, game) {
-      // Passive: drain 1hp every 6 round-actions (unblockable)
-      fighter.roundActionCount++
-      if (fighter.roundActionCount % 6 === 0) {
-        if (!opponent.warping) {
-          opponent.hp        -= 1
-          opponent.lastDamage += 1
-          fighter.drainedHp  += 1
-          fighter.healReserve += 1
-          fighter.chargeUlt(5)
-        }
-      }
+      // Passive drain is handled in _resolveStep directly (before character hooks)
       // SIPHON: handled in _applyNullAbility
       // DRAIN: heal 1 from reserve
       if (action === ACTION.RECOVER) {
@@ -312,20 +303,19 @@ const CHARACTERS = [
       }
     },
     onUlt(fighter, opponent, game) {
-      // REAP: 2t range, 2 damage, push 2 tiles away, +1 if wall
+      // REAP: 2t range, 2 damage, push 2 tiles away, +1 if clamped by wall
       if (Math.abs(fighter.tile - opponent.tile) > 2) return
       const dmg = Math.max(0, 2 - (opponent.blocking ? 1 : 0))
       opponent.hp        -= dmg
       opponent.lastDamage += dmg
       if (dmg > 0) fighter.chargeUlt(5)
       // Push 2 tiles away from Estelle
-      const dir  = opponent.tile >= fighter.tile ? 1 : -1
-      const dest = Math.max(0, Math.min(TILE_COUNT - 1, opponent.tile + dir * 2))
-      const hitWall = dest === 0 || dest === TILE_COUNT - 1
-      const travelled = Math.abs(dest - opponent.tile)
+      const dir     = opponent.tile >= fighter.tile ? 1 : -1
+      const rawDest = opponent.tile + dir * 2
+      const dest    = Math.max(0, Math.min(TILE_COUNT - 1, rawDest))
       opponent.tile = dest
-      if (hitWall && travelled < 2) {
-        // Hit a wall before travelling full distance — bonus damage
+      // Bonus damage if push would have gone past tile 0 or tile 8 (clamped)
+      if (rawDest < 0 || rawDest > TILE_COUNT - 1) {
         opponent.hp        -= 1
         opponent.lastDamage += 1
         fighter.chargeUlt(5)
@@ -363,7 +353,8 @@ class Fighter {
     this.redeployTile     = null  // Andile warp: chosen tile (null = not yet set)
     this.drainedHp        = 0    // Estelle: total hp drained by passive this round
     this.healReserve      = 0    // Estelle: hp banked for RECOVER use
-    this.roundActionCount = 0    // Estelle passive: resets each round
+    this.roundActionCount = 0    // Estelle/Takashi passive: resets each round
+    this.drainedThisStep  = false // set true if Estelle drained this fighter this step
   }
 
   get colour() { return this.charDef?.colour ?? (this.id === 1 ? C.p1 : C.p2) }
@@ -393,6 +384,7 @@ class Fighter {
     this.drainedHp        = 0
     this.healReserve      = 0
     this.roundActionCount = 0
+    this.drainedThisStep  = false
     // ult persists
   }
 
@@ -531,9 +523,9 @@ class ClocksOutGame {
     this.charSelectIdx = [0, 0]
     this.log           = []
     this.phase         = PHASE.CHAR_P1
-    if (this.hud.timer)  this.hud.timer.textContent  = '—'
-    if (this.hud.p1hp)   this.hud.p1hp.textContent   = '—'
-    if (this.hud.p2hp)   this.hud.p2hp.textContent   = '—'
+    if (this.hud.timer)  this.hud.timer.textContent  = '-'
+    if (this.hud.p1hp)   this.hud.p1hp.textContent   = '-'
+    if (this.hud.p2hp)   this.hud.p2hp.textContent   = '-'
     if (this.hud.status) this.hud.status.textContent  = ''
   }
 
@@ -631,10 +623,11 @@ class ClocksOutGame {
     this._ac1 = ac1; this._ac2 = ac2
 
     // Reset per-step state
-    this.p1.blocking      = false; this.p2.blocking      = false
-    this.p1.parrying      = false; this.p2.parrying      = false
-    this.p1.lastDamage    = 0;     this.p2.lastDamage    = 0
-    this.p1.movedThisStep = false; this.p2.movedThisStep = false
+    this.p1.blocking        = false; this.p2.blocking        = false
+    this.p1.parrying        = false; this.p2.parrying        = false
+    this.p1.lastDamage      = 0;     this.p2.lastDamage      = 0
+    this.p1.movedThisStep   = false; this.p2.movedThisStep   = false
+    this.p1.drainedThisStep = false; this.p2.drainedThisStep = false
 
     // ── Phase 0: DEFEND precheck ─────────────────────────────────────────────
     if (ac1 === ACLASS.DEFEND) {
@@ -765,12 +758,30 @@ class ClocksOutGame {
     }
     tickStatus(this.p1); tickStatus(this.p2)
 
-    // ── Passive hooks ────────────────────────────────────────────────────────
-    this.p1.charDef?.onResolveStep(this.p1, a1, this.p2, this)
-    this.p2.charDef?.onResolveStep(this.p2, a2, this.p1, this)
+    // ── Round action count (used by passives) ────────────────────────────────
     this.actionCount++
     this.p1.roundActionCount++
     this.p2.roundActionCount++
+
+    // ── Estelle passive: drain 1hp every 6 round-actions, before char hooks ──
+    // Fires for each Estelle independently; Takashi skips his heal if drained.
+    const estelleDrain = (estelle, opp) => {
+      if (estelle.charDef?.id !== 'estelle') return
+      if (estelle.roundActionCount % 6 !== 0) return
+      if (opp.warping) return
+      opp.hp            -= 1
+      opp.lastDamage    += 1
+      opp.drainedThisStep = true
+      estelle.drainedHp  += 1
+      estelle.healReserve += 1
+      estelle.chargeUlt(5)
+    }
+    estelleDrain(this.p1, this.p2)
+    estelleDrain(this.p2, this.p1)
+
+    // ── Passive hooks ────────────────────────────────────────────────────────
+    this.p1.charDef?.onResolveStep(this.p1, a1, this.p2, this)
+    this.p2.charDef?.onResolveStep(this.p2, a2, this.p1, this)
 
     let entry = `${i+1}  P1:${ACTION_NAME[a1] ?? a1}  P2:${ACTION_NAME[a2] ?? a2}`
     if (this.p1.lastDamage) entry += `  ‹P1 -${this.p1.lastDamage}›`
@@ -1888,7 +1899,7 @@ class ClocksOutGame {
       if (this.phase === PHASE.SETOVER) {
         line1 = w1 > w2 ? `${this.p1.name} WINS`
                : w2 > w1 ? `${this.p2.name} WINS` : 'DRAW'
-        if (this.matchFmt > 1) line2 = `${w1}  —  ${w2}`
+        if (this.matchFmt > 1) line2 = `${w1}  -  ${w2}`
       } else {
         const winner = this.p1.hp <= 0 && this.p2.hp > 0 ? this.p2.name
                      : this.p2.hp <= 0 && this.p1.hp > 0 ? this.p1.name : null
@@ -1908,7 +1919,7 @@ class ClocksOutGame {
 
       if (this.phase === PHASE.SETOVER) {
         ctx.fillStyle = C.muted + 'aa'; ctx.font = `10px 'Courier New', monospace`
-        ctx.fillText('TAP  /  SPACE — main menu', W / 2, H / 2 + (line2 ? 46 : 30))
+        ctx.fillText('TAP  /  SPACE: main menu', W / 2, H / 2 + (line2 ? 46 : 30))
       }
       ctx.textBaseline = 'alphabetic'
     }
@@ -1947,7 +1958,7 @@ class ClocksOutGame {
 
     ctx.fillStyle = pCol
     ctx.font = `bold ${Math.min(W * 0.033, 14)}px 'Courier New', monospace`
-    ctx.fillText(`P${pIdx + 1} — CHOOSE YOUR FIGHTER`, W / 2, H * 0.16)
+    ctx.fillText(`P${pIdx + 1}: CHOOSE YOUR FIGHTER`, W / 2, H * 0.16)
 
     const COLS  = 3
     const pad   = W * 0.05
