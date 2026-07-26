@@ -39,11 +39,12 @@ const ACTION = {
   HEAVY:      11,   // Takashi unique atk part 2 (2 dmg)
   FORCED_WAIT:12,   // Takashi parry penalty / carry-over
   REDEPLOY:   13,   // Andile warp passive — slot 1 of queue break
+  TELEPORT:   14,   // Estelle ENGAGE part 2 — teleport away from enemy
 }
 
 const BTN_LABEL   = ['WAIT','JAB','LEFT','RIGHT','BLOCK','SP.ATK','CON.ATK','ENGAGE','RECOVER','ULT']
 const ACTION_NAME  = ['WAIT','JAB','LEFT','RIGHT','BLOCK','SP.ATK','CON.ATK','ENGAGE','RECOVER','ULT',
-                      'CHARGE','HEAVY','WAIT','REDEPLOY']  // indices 10-13
+                      'CHARGE','HEAVY','WAIT','REDEPLOY','TELEPORT']  // indices 10-14
 
 // Action classes — used for resolution ordering and DEFEND precheck logic
 const ACLASS = {
@@ -71,22 +72,27 @@ function actionClass(action, charId) {
       if (charId === 'takashi') return ACLASS.NULL   // CHARGE step
       if (charId === 'lia')     return ACLASS.ATTACK // DEBUFF (parryable)
       if (charId === 'andile')  return ACLASS.NULL   // STATIC mark
+      if (charId === 'estelle') return ACLASS.ATTACK // NECROTIC BOLT
       return ACLASS.ATTACK
     case ACTION.CON_ATK:
       if (charId === 'takashi') return ACLASS.DEFEND  // PARRY
       if (charId === 'lia')     return ACLASS.ATTACK  // CHAIN
       if (charId === 'andile')  return ACLASS.NULL    // IGNITE (not an attack)
+      if (charId === 'estelle') return ACLASS.NULL    // SIPHON
       return ACLASS.ATTACK
     case ACTION.ENGAGE:
       if (charId === 'takashi') return ACLASS.MOVE    // DASH
       if (charId === 'lia')     return ACLASS.ATTACK  // PULL (parryable)
       if (charId === 'andile')  return ACLASS.MOVE    // WARP
+      if (charId === 'estelle') return ACLASS.NULL    // FADE (forced wait, part 1)
       return ACLASS.MOVE
     case ACTION.RECOVER:
-      if (charId === 'andile') return ACLASS.MOVE   // BLINK teleport
+      if (charId === 'andile')  return ACLASS.MOVE    // BLINK teleport
+      if (charId === 'estelle') return ACLASS.NULL    // DRAIN reserve heal
       return ACLASS.RECOVER
     case ACTION.ULT:        return ACLASS.RECOVER
     case ACTION.REDEPLOY:   return ACLASS.MOVE   // Andile warp — non-parryable teleport
+    case ACTION.TELEPORT:   return ACLASS.MOVE   // Estelle ENGAGE part 2
     default:                return ACLASS.NULL
   }
 }
@@ -161,7 +167,7 @@ const CHARACTERS = [
     ultName: 'FURY',
     info: [
       'PASSIVE Fighting Spirit: Heals 1hp/8acts.',
-      'SP.ATK (5) Focus Strike: Fills 2 acts - act 1 charge [NULL], act 2 heavy 1t/2dmg. [ATK]',
+      'SP.ATK (5) Focus Strike: Fills 2 acts: act 1 charge [NULL], act 2 heavy 1t/2dmg. [ATK]',
       'CON.ATK (6) Counter: If enemy would [ATK] this act, deal 1dmg and take no dmg from this attack. If the enemy would not [ATK], flinch next act [NULL]. [NULL]',
       'ENGAGE (7) Quickstep: Moves 2 tiles in direction of opponent. [MOVE]',
       'RECOVER (8) Clear the Mind: Remove all status effects. If no status, gain 5% ult charge. [RECOV]',
@@ -172,7 +178,7 @@ const CHARACTERS = [
     },
     onResolveStep(fighter, action, opponent, game) {
       // Passive: heal 1HP every 8 actions (fires after actionCount increments)
-      if (game.actionCount > 0 && game.actionCount % 8 === 0) {
+      if (fighter.roundActionCount > 0 && fighter.roundActionCount % 6 === 0) {
         fighter.hp = Math.min(MAX_HP, fighter.hp + 1)
       }
       // RECOVER / CLEANSE — called via _applyRecover
@@ -247,7 +253,7 @@ const CHARACTERS = [
     abilityNames: { 5:'STATIC', 6:'IGNITE', 7:'WARP', 8:'BLINK' },
     ultName: 'ELECTRIFY',
     info: [
-      'PASSIVE Charged: Jab applies static mark on contact. At 3HP or less, your next action is a forced redeploy to a tile of your choice. [MOVE]',
+      'PASSIVE Charged: Jab applies static mark on contact.',
       'SP.ATK (5) Spark Arc: 2t. Applies static mark. [NULL]',
       'CON.ATK (6) Lightning Blast: 2t. Consumes static mark to deal 1 damage and 1 stun. [NULL]',
       'ENGAGE (7) Warp: Teleport within 1t of enemy (bias towards centre). [MOVE]',
@@ -273,7 +279,58 @@ const CHARACTERS = [
     name: 'ESTELLE', // ORLOV
     colour: '#a07ad4',
     desc: 'Necromancer: HP Drain Punisher.',
-    ...DUMMY_MOVESET,
+    abilityNames: { 5:'BOLT', 6:'SIPHON', 7:'FADE', 8:'DRAIN' },
+    ultName: 'REAP',
+    info: [
+      'PASSIVE Spirit Leech: Every 6 actions, drains 1hp from enemy (unblockable). Builds heal reserve.',
+      'SP.ATK (5) Dark Bolt: Exactly 2t range. Deals 1 damage. [ATK]',
+      'CON.ATK (6) Drain: 1t. If enemy not moving, steal 1hp from them. [NULL]',
+      'ENGAGE (7) Crow Cowl: Fills 2 acts: act 1 charge [NULL], act 2 teleport 3t away from enemy [MOVE].',
+      'RECOVER (8) Siphon Arts: Spend 1 from heal reserve to heal 1hp. Does nothing if reserve empty. [NULL]',
+      'ULT (9) Trueform Summoning: 2t range. 2 damage, push enemy 2 tiles away. +1 damage if they hit a wall. [NULL]',
+    ],
+    onSequenceStart(fighter, game) {},
+    onResolveStep(fighter, action, opponent, game) {
+      // Passive: drain 1hp every 6 round-actions (unblockable)
+      fighter.roundActionCount++
+      if (fighter.roundActionCount % 6 === 0) {
+        if (!opponent.warping) {
+          opponent.hp        -= 1
+          opponent.lastDamage += 1
+          fighter.drainedHp  += 1
+          fighter.healReserve += 1
+          fighter.chargeUlt(5)
+        }
+      }
+      // SIPHON: handled in _applyNullAbility
+      // DRAIN: heal 1 from reserve
+      if (action === ACTION.RECOVER) {
+        if (fighter.healReserve > 0) {
+          fighter.healReserve--
+          fighter.hp = Math.min(MAX_HP, fighter.hp + 1)
+        }
+      }
+    },
+    onUlt(fighter, opponent, game) {
+      // REAP: 2t range, 2 damage, push 2 tiles away, +1 if wall
+      if (Math.abs(fighter.tile - opponent.tile) > 2) return
+      const dmg = Math.max(0, 2 - (opponent.blocking ? 1 : 0))
+      opponent.hp        -= dmg
+      opponent.lastDamage += dmg
+      if (dmg > 0) fighter.chargeUlt(5)
+      // Push 2 tiles away from Estelle
+      const dir  = opponent.tile >= fighter.tile ? 1 : -1
+      const dest = Math.max(0, Math.min(TILE_COUNT - 1, opponent.tile + dir * 2))
+      const hitWall = dest === 0 || dest === TILE_COUNT - 1
+      const travelled = Math.abs(dest - opponent.tile)
+      opponent.tile = dest
+      if (hitWall && travelled < 2) {
+        // Hit a wall before travelling full distance — bonus damage
+        opponent.hp        -= 1
+        opponent.lastDamage += 1
+        fighter.chargeUlt(5)
+      }
+    },
   },
 ]
 
@@ -304,6 +361,9 @@ class Fighter {
     this.warpUsed         = false // Andile passive: once per match
     this.warping          = false // Andile: untargetable this step
     this.redeployTile     = null  // Andile warp: chosen tile (null = not yet set)
+    this.drainedHp        = 0    // Estelle: total hp drained by passive this round
+    this.healReserve      = 0    // Estelle: hp banked for RECOVER use
+    this.roundActionCount = 0    // Estelle passive: resets each round
   }
 
   get colour() { return this.charDef?.colour ?? (this.id === 1 ? C.p1 : C.p2) }
@@ -330,6 +390,9 @@ class Fighter {
     this.warpUsed         = false
     this.warping          = false
     this.redeployTile     = null
+    this.drainedHp        = 0
+    this.healReserve      = 0
+    this.roundActionCount = 0
     // ult persists
   }
 
@@ -706,6 +769,8 @@ class ClocksOutGame {
     this.p1.charDef?.onResolveStep(this.p1, a1, this.p2, this)
     this.p2.charDef?.onResolveStep(this.p2, a2, this.p1, this)
     this.actionCount++
+    this.p1.roundActionCount++
+    this.p2.roundActionCount++
 
     let entry = `${i+1}  P1:${ACTION_NAME[a1] ?? a1}  P2:${ACTION_NAME[a2] ?? a2}`
     if (this.p1.lastDamage) entry += `  ‹P1 -${this.p1.lastDamage}›`
@@ -787,6 +852,11 @@ class ClocksOutGame {
       f.warping      = false
       f.redeployTile = null
     }
+    if (action === ACTION.TELEPORT && f.charDef?.id === 'estelle') {
+      // Teleport 3 tiles away from opponent
+      const dir = f.tile >= opponent.tile ? 1 : -1  // away from opponent
+      f.tile = Math.max(0, Math.min(TILE_COUNT - 1, f.tile + dir * 3))
+    }
     if (f.tile !== prevTile) f.movedThisStep = true
   }
 
@@ -825,6 +895,14 @@ class ClocksOutGame {
         }
       }
     }
+    // Estelle SP_ATK — NECROTIC BOLT: exactly 2 tile range, 1 damage
+    if (action === ACTION.SP_ATK && attacker.charDef?.id === 'estelle') {
+      const dist = Math.abs(attacker.tile - defender.tile)
+      if (dist === 2) {
+        this._dealDamage(attacker, defender, 1)
+      }
+    }
+
     if (action === ACTION.ENGAGE && attacker.charDef?.id === 'lia') {
       if (Math.abs(attacker.tile - defender.tile) <= 4) {
         const prevTile = defender.tile
@@ -924,6 +1002,16 @@ class ClocksOutGame {
         defender.lastDamage += 1
         attacker.chargeUlt(5)
         this._forceSlot(defender, ACTION.FORCED_WAIT)
+      }
+    }
+    // Estelle CON_ATK — SIPHON: 1t, if enemy not moving steal 1hp
+    if (action === ACTION.CON_ATK && attacker.charDef?.id === 'estelle') {
+      const oppAC = attacker === this.p1 ? this._ac2 : this._ac1
+      if (Math.abs(attacker.tile - defender.tile) <= 1 && oppAC !== ACLASS.MOVE && !defender.warping) {
+        defender.hp        -= 1
+        defender.lastDamage += 1
+        attacker.hp = Math.min(MAX_HP, attacker.hp + 1)
+        attacker.chargeUlt(5)
       }
     }
   }
@@ -1274,6 +1362,14 @@ class ClocksOutGame {
         fighter.queue.push(ACTION.CHARGE)
         fighter.nextQueuePrefix = [ACTION.HEAVY]
       }
+    } else if (actionId === ACTION.ENGAGE && fighter.charDef?.id === 'estelle') {
+      const free = target - fighter.queue.length
+      if (free >= 2) {
+        fighter.queue.push(ACTION.FORCED_WAIT, ACTION.TELEPORT)
+      } else if (free === 1) {
+        fighter.queue.push(ACTION.FORCED_WAIT)
+        fighter.nextQueuePrefix = [ACTION.TELEPORT]
+      }
     } else {
       fighter.queue.push(actionId)
     }
@@ -1290,6 +1386,15 @@ class ClocksOutGame {
       fighter.queue.pop()
     }
     if (last === ACTION.CHARGE && fighter.nextQueuePrefix[0] === ACTION.HEAVY) {
+      fighter.nextQueuePrefix.shift()
+    }
+    // Estelle FADE pair: undo TELEPORT removes preceding FORCED_WAIT too
+    if (last === ACTION.TELEPORT &&
+        fighter.queue.length > 0 &&
+        fighter.queue[fighter.queue.length - 1] === ACTION.FORCED_WAIT) {
+      fighter.queue.pop()
+    }
+    if (last === ACTION.FORCED_WAIT && fighter.nextQueuePrefix[0] === ACTION.TELEPORT) {
       fighter.nextQueuePrefix.shift()
     }
     fighter.locked = false
