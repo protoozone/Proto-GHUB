@@ -247,7 +247,7 @@ const CHARACTERS = [
     abilityNames: { 5:'STATIC', 6:'IGNITE', 7:'WARP', 8:'BLINK' },
     ultName: 'ELECTRIFY',
     info: [
-      'PASSIVE Charged: Jab applies static mark on contact.',
+      'PASSIVE Charged: Jab applies static mark on contact. At 3HP or less, your next action is a forced redeploy to a tile of your choice. [MOVE]',
       'SP.ATK (5) Spark Arc: 2t. Applies static mark. [NULL]',
       'CON.ATK (6) Lightning Blast: 2t. Consumes static mark to deal 1 damage and 1 stun. [NULL]',
       'ENGAGE (7) Warp: Teleport within 1t of enemy (bias towards centre). [MOVE]',
@@ -517,8 +517,19 @@ class ClocksOutGame {
     }
     applyPrefix(this.p1)
     applyPrefix(this.p2)
-    this.log      = []
-    this.phase    = PHASE.INPUT
+    this.log = []
+
+    // If a warping Andile has REDEPLOY pre-filled, open WARP_SELECT so their
+    // first keypress sets the tile rather than pushing a second action
+    const hasWarpPrefix = (f) => f.warping && f.queue[0] === ACTION.REDEPLOY
+    if (hasWarpPrefix(this.p1) || hasWarpPrefix(this.p2)) {
+      this._warpWindowSize = this.slots
+      this.resolveIdx      = 0
+      this.phase           = PHASE.WARP_SELECT
+    } else {
+      this.phase = PHASE.INPUT
+    }
+
     this.timeLeft = this.timerS * 1000
     this.lastTick = null
     this.p1.charDef?.onSequenceStart(this.p1, this)
@@ -847,10 +858,19 @@ class ClocksOutGame {
   // resolveIdx has already been incremented, so it points to the first unplayed slot.
   // We preserve the already-resolved prefix and open a new input window for the tail.
   _beginWarpSelect() {
-    const remaining  = this.slots - this.resolveIdx
-    const windowSize = remaining > 0 ? remaining : this.slots
+    const remaining = this.slots - this.resolveIdx
 
-    // Truncate queues to the resolved prefix — keep history, clear unplayed tail
+    if (remaining <= 0) {
+      // Warp triggered on the last slot — start a fresh sequence.
+      // Pre-fill each warping Andile's slot 0 with REDEPLOY via nextQueuePrefix.
+      // The tile choice (redeployTile) is set by first valid key press during input.
+      if (this.p1.warping) { this.p1.nextQueuePrefix = [ACTION.REDEPLOY]; this.p1.redeployTile = null }
+      if (this.p2.warping) { this.p2.nextQueuePrefix = [ACTION.REDEPLOY]; this.p2.redeployTile = null }
+      this._startSequence()
+      return
+    }
+
+    // Mid-sequence warp: truncate queues to resolved prefix, replan the tail
     this.p1.queue = this.p1.queue.slice(0, this.resolveIdx)
     this.p2.queue = this.p2.queue.slice(0, this.resolveIdx)
     this.p1.locked = false
@@ -858,14 +878,10 @@ class ClocksOutGame {
     this.p1.nextQueuePrefix = []
     this.p2.nextQueuePrefix = []
 
-    // Reset each warping Andile's deploy choice
     if (this.p1.warping) this.p1.redeployTile = null
     if (this.p2.warping) this.p2.redeployTile = null
 
-    this._warpWindowSize = windowSize
-
-    // If warp triggered on the last slot, this is effectively a fresh sequence
-    if (remaining <= 0) this.resolveIdx = 0
+    this._warpWindowSize = remaining
 
     this.phase    = PHASE.WARP_SELECT
     this.timeLeft = this.timerS * 1000
@@ -994,10 +1010,15 @@ class ClocksOutGame {
       if (P1_KEY_MAP[code] !== undefined) {
         const btnIdx = P1_KEY_MAP[code]
         if (this.p1.warping) {
-          // First keypress (1-9) sets deploy tile and fills that slot with REDEPLOY
+          // First keypress (1-9) sets deploy tile.
+          // If REDEPLOY is already pre-filled (fresh-sequence case), just set the tile.
+          // Otherwise push REDEPLOY into the queue now.
           if (this.p1.redeployTile === null && btnIdx >= 1) {
             this.p1.redeployTile = btnIdx - 1
-            this.p1.queue.push(ACTION.REDEPLOY)
+            const alreadyFilled = this.p1.queue[this.resolveIdx] === ACTION.REDEPLOY
+            if (!alreadyFilled) {
+              this.p1.queue.push(ACTION.REDEPLOY)
+            }
             if (this.p1.queue.length >= this._inputSlotTarget) this.p1.locked = true
           } else if (this.p1.redeployTile !== null && this.p1.queue.length < this._inputSlotTarget) {
             this._pushAction(this.p1, btnIdx)
@@ -1032,7 +1053,10 @@ class ClocksOutGame {
         if (this.p2.warping) {
           if (this.p2.redeployTile === null && raw >= 1) {
             this.p2.redeployTile = raw - 1
-            this.p2.queue.push(ACTION.REDEPLOY)
+            const alreadyFilled = this.p2.queue[this.resolveIdx] === ACTION.REDEPLOY
+            if (!alreadyFilled) {
+              this.p2.queue.push(ACTION.REDEPLOY)
+            }
             if (this.p2.queue.length >= this._inputSlotTarget) this.p2.locked = true
           } else if (this.p2.redeployTile !== null && this.p2.queue.length < this._inputSlotTarget) {
             this._pushAction(this.p2, btnIdx)
@@ -1141,7 +1165,8 @@ class ClocksOutGame {
           if (this.p1.warping) {
             if (this.p1.redeployTile === null && btnIdx >= 1) {
               this.p1.redeployTile = btnIdx - 1
-              this.p1.queue.push(ACTION.REDEPLOY)
+              const alreadyFilled = this.p1.queue[this.resolveIdx] === ACTION.REDEPLOY
+              if (!alreadyFilled) this.p1.queue.push(ACTION.REDEPLOY)
               if (this.p1.queue.length >= this._inputSlotTarget) this.p1.locked = true
             } else if (this.p1.redeployTile !== null && this.p1.queue.length < this._inputSlotTarget) {
               this._pushAction(this.p1, btnIdx)
@@ -1169,7 +1194,8 @@ class ClocksOutGame {
           if (this.p2.warping) {
             if (this.p2.redeployTile === null && raw >= 1) {
               this.p2.redeployTile = raw - 1
-              this.p2.queue.push(ACTION.REDEPLOY)
+              const alreadyFilled = this.p2.queue[this.resolveIdx] === ACTION.REDEPLOY
+              if (!alreadyFilled) this.p2.queue.push(ACTION.REDEPLOY)
               if (this.p2.queue.length >= this._inputSlotTarget) this.p2.locked = true
             } else if (this.p2.redeployTile !== null && this.p2.queue.length < this._inputSlotTarget) {
               this._pushAction(this.p2, p2Action(raw))
