@@ -32,10 +32,9 @@ Up next for implementation:
 - More rule and handicap varieties for chess
 - Sweeping mines
 - Konkey Dong
-- Invaders who came from space
+- Polished balls on a table with pockets
 
 And for future plans, we have: 
-- Polished balls on a table with pockets
 - A bunch of small fellas shooting each other
 - Make many jumps to scale a tower
 - Punch your way through an alley
@@ -47,7 +46,6 @@ And for future plans, we have:
 - Roguelike (not lite)
 - A bunch of marbles entering side pockets
 - A bunch of tokens entering my pockets
-- I hate ludo
 - Bankruptcy
 - Polished tokens on a table with pockets and some white dust
 - Settlers of alarm
@@ -63,3 +61,11 @@ for commercial purposes. Any derivative work must remain open
 source under the same license.
 
 See LICENSE for details.
+
+
+# 0.2 Patch Notes (common game name in brackets)
+- Added 5 dice (Yahtzee)
+- Added DontLu (Ludo)
+- Added Clock's Out [this one's an original]
+- Added Little Shooter (Space Invaders)
+- Added Demolition (Brick Breaker)
