@@ -715,14 +715,18 @@ function is5Kind(dice) {
 }
 
 /**
- * Strict assignment rules (when strict5Kind option is on and we have 5-of-a-kind):
- *   1. If '5kind' slot is open → must assign there first
- *   2. If '5kind' was scored 0 → no joker; all slots open
- *   3. If '5kind' was scored 50 → joker priority:
- *      a. Corresponding upper box
- *      b. Any open upper box
- *      c. 3ok / 4ok
- *      d. Anything else
+ * Strict joker assignment rules (when strict5Kind is on and we have 5-of-a-kind):
+ *
+ *   1. If '5kind' slot is open -> must assign there first.
+ *   2. If '5kind' was scored 0 -> no joker applies; all open slots available.
+ *   3. If '5kind' was scored 50 -> official joker priority:
+ *        a. Corresponding upper box (e.g. five 4s -> Fours). Scores dice sum.
+ *        b. Any open LOWER section box (wild card; fixed scores for FH/straights,
+ *           dice sum for 3ok/4ok/chance).
+ *        c. Last resort: any open UPPER box. Scores ZERO (forced scratch).
+ *
+ * The returned Set has a `lastResortUpper` flag when case (c) applies,
+ * so potentialScore and recordValue can return 0 instead of the dice sum.
  */
 function allowedCats(dice, rules) {
   const allOpen = new Set(
@@ -733,27 +737,30 @@ function allowedCats(dice, rules) {
 
   if (!rules.strict5Kind || !is5Kind(dice)) return allOpen;
 
-  // Step 1 — 5kind slot not yet used
+  // Step 1: 5kind slot not yet used
   if (scorecard['5kind'] === undefined) {
     return allOpen.has('5kind') ? new Set(['5kind']) : allOpen;
   }
 
-  // Step 2 — 5kind was scratched (scored 0) → no joker
+  // Step 2: 5kind was scratched (0) - no joker
   if (scorecard['5kind'] !== 50) return allOpen;
 
-  // Step 3 — joker assignment priority
-  const face           = dice[0].outcome;
-  const upperForFace   = ['ones','twos','threes','fours','fives','sixes'][face - 1];
+  // Step 3: official joker priority
+  const face         = dice[0].outcome;
+  const upperForFace = ['ones','twos','threes','fours','fives','sixes'][face - 1];
 
+  // a. Corresponding upper box open -> must go there, scores normal dice sum
   if (allOpen.has(upperForFace)) return new Set([upperForFace]);
 
+  // b. Any open lower section box -> player's choice, wild card scores apply
+  const openLower = [...allOpen].filter(id => !UPPER_IDS.has(id) && id !== '5kind');
+  if (openLower.length > 0) return new Set(openLower);
+
+  // c. Last resort: only upper boxes remain -> forced scratch, scores zero
   const openUpper = [...allOpen].filter(id => UPPER_IDS.has(id));
-  if (openUpper.length > 0) return new Set(openUpper);
-
-  const openKind = [...allOpen].filter(id => id === '3ok' || id === '4ok');
-  if (openKind.length > 0) return new Set(openKind);
-
-  return allOpen;
+  const result    = new Set(openUpper);
+  result.lastResortUpper = true;
+  return result;
 }
 
 /**
@@ -767,17 +774,29 @@ function potentialScore(id, dice, rules, allowed) {
   const joker      = is5Kind(dice);
   const first5kind = scorecard['5kind'] === 50;
 
-  // Wild card bonuses: full house and straights score their fixed values
+  // Last-resort upper box under strict joker rules -> forced zero scratch
+  if (rules.strict5Kind && joker && first5kind && allowed.lastResortUpper && UPPER_IDS.has(id)) {
+    return 0;
+  }
+
+  // Strict joker: lower section wild card fixed scores
+  if (rules.strict5Kind && joker && first5kind && id !== '5kind') {
+    if (id === 'fh') return 25;
+    if (id === 'ss') return 30;
+    if (id === 'ls') return 40;
+    // 3ok / 4ok / chance score the dice sum
+    if (id === '3ok' || id === '4ok' || id === 'chance') {
+      return dice.reduce((s, d) => s + d.outcome, 0);
+    }
+  }
+
+  // Non-strict wild card bonuses (alwaysWild or wildAfterFirst)
   if (joker && (rules.alwaysWild || (rules.wildAfterFirst && first5kind)) && id !== '5kind') {
     if (id === 'fh') return 25;
     if (id === 'ss') return 30;
     if (id === 'ls') return 40;
   }
-  if (rules.strict5Kind && joker && first5kind && id !== '5kind') {
-    if (id === 'fh') return 25;
-    if (id === 'ss') return 30;
-    if (id === 'ls') return 40;
-  }
+
   return scoreValue(id, dice);
 }
 
@@ -790,17 +809,26 @@ function recordValue(id, dice, rules) {
   const first5kind = scorecard['5kind'] === 50;
 
   if (rules.strict5Kind && joker && first5kind && id !== '5kind') {
-    if (UPPER_IDS.has(id)) return scoreValue(id, dice); // upper box: normal sum
+    // Re-derive allowed to check whether we're in last-resort upper mode
+    const allowed = allowedCats(dice, rules);
+
+    // c. Last-resort upper box -> zero scratch
+    if (allowed.lastResortUpper && UPPER_IDS.has(id)) return 0;
+
+    // a. Corresponding upper box -> normal dice sum (scoreValue handles it)
+    if (UPPER_IDS.has(id)) return scoreValue(id, dice);
+
+    // b. Lower section wild card fixed scores
     if (id === 'fh')  return 25;
     if (id === 'ss')  return 30;
     if (id === 'ls')  return 40;
-    // 3ok / 4ok / chance under strict joker: sum of all dice
+    // 3ok / 4ok / chance -> sum of all dice
     if (id === '3ok' || id === '4ok' || id === 'chance') {
       return dice.reduce((s, d) => s + d.outcome, 0);
     }
   }
 
-  // Non-strict wild card
+  // Non-strict wild card bonuses
   if (joker && (rules.alwaysWild || (rules.wildAfterFirst && first5kind)) && id !== '5kind') {
     if (id === 'fh') return 25;
     if (id === 'ss') return 30;
