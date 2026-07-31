@@ -249,7 +249,7 @@ export default function Home() {
           <br />
           <p>
             If you have any suggestions for improvements, please feel <br />
-            free to reach out on my Twitter here: https://x.com/Protosplo
+            free to leave a comment via my Kofi on: https://ko-fi.com/protozone 
           </p>
           <br />
           <p>
@@ -260,8 +260,8 @@ export default function Home() {
           </p>
           <br />
           <p>
-            Here's also a link to my ko-fi, donations are entirely optional, so <br />
-            only feel free to if you have the means and enjoy: https://ko-fi.com/protozone
+            Donations are entirely optional, so only feel free to if you have <br /> 
+            the means and enjoy. 
           </p>
           <br /><br />
           <div className="row">
@@ -277,7 +277,7 @@ export default function Home() {
             <div className="column"><GameCard to="/games/Clocks_Out" name="Clock's Out" artSrc="/assets/'clocksout'.png" /></div>
           </div>
           <div className="row">
-            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
+            <div className="column"><GameCard to="/games/Five_Dice" name="Five Dice" artSrc="/assets/'fivedice'.png" /></div>
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>

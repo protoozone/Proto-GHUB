@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Five Dice</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      font-family: monospace; color: #ffffff;
+      gap: 12px; position: relative; overflow: hidden;
+    }
+    #bg-canvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+    body > *:not(#bg-canvas) { position: relative; z-index: 1; }
+
+    #hub-btn {
+      background: transparent; border: 1px solid #555; color: #aaaaaa;
+      font-family: monospace; font-size: 12px; padding: 6px 14px;
+      cursor: pointer; letter-spacing: 1px; border-radius: 6px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    #hub-btn:hover { border-color: #ccc; color: #fff; }
+
+    #menu { display: flex; flex-direction: column; align-items: center; gap: 22px; }
+    #menu h1 { font-size: 30px; color: #ffffff; letter-spacing: 5px; }
+
+    .option-group {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 9px; width: 340px;
+    }
+
+    /* Section divider */
+    .section-divider {
+      width: 100%; border: none; border-top: 1px solid #3a3a3a; margin: 4px 0;
+    }
+
+    .toggle-row {
+      display: flex; align-items: center; justify-content: space-between;
+      width: 100%; padding: 0 4px;
+    }
+    .toggle-label { font-size: 12px; color: #aaaaaa; letter-spacing: 1.5px; }
+    .toggle-label.highlight { color: #dddddd; }
+
+    .toggle-pill { position: relative; width: 42px; height: 22px; cursor: pointer; }
+    .toggle-pill input { display: none; }
+    .pill-track {
+      position: absolute; inset: 0; background: #444;
+      border-radius: 11px; transition: background 0.2s;
+    }
+    .toggle-pill input:checked + .pill-track { background: #33333388; border: 1px solid #888; }
+    .pill-thumb {
+      position: absolute; top: 3px; left: 3px;
+      width: 16px; height: 16px; background: #666;
+      border-radius: 50%; transition: transform 0.2s, background 0.2s;
+    }
+    .toggle-pill input:checked ~ .pill-thumb { transform: translateX(20px); background: #ddd; }
+
+    /* Tournament games input */
+    #tourn-games-row {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 10px; width: 100%; padding: 0 4px; transition: opacity 0.2s;
+    }
+    #tourn-games-row.hidden { opacity: 0; pointer-events: none; }
+    #tourn-games-row label { font-size: 11px; color: #777; letter-spacing: 1px; }
+    #tourn-games-val {
+      width: 64px; background: transparent; border: 1px solid #555;
+      border-radius: 6px; color: #fff; font-family: monospace;
+      font-size: 13px; text-align: center; padding: 4px 0;
+    }
+    #tourn-games-val:focus { outline: none; border-color: #aaa; }
+
+    /* Rules block — dims when tournament is on */
+    #rules-block {
+      display: contents; transition: opacity 0.2s;
+    }
+    #rules-block.locked {
+      opacity: 0.35; pointer-events: none;
+    }
+
+    #bonus-row {
+      display: flex; align-items: center; justify-content: flex-end;
+      gap: 10px; width: 100%; padding: 0 4px; transition: opacity 0.2s;
+    }
+    #bonus-row.hidden { opacity: 0.2; pointer-events: none; }
+    #bonus-row label { font-size: 11px; color: #777; letter-spacing: 1px; }
+    #bonus-val {
+      width: 52px; background: transparent; border: 1px solid #555;
+      border-radius: 6px; color: #fff; font-family: monospace;
+      font-size: 13px; text-align: center; padding: 4px 0;
+    }
+    #bonus-val:focus { outline: none; border-color: #aaa; }
+
+    .sub-option { margin-left: 16px; width: calc(100% - 16px); transition: opacity 0.2s; }
+    .sub-option.hidden { opacity: 0.2; pointer-events: none; }
+
+    #start-btn {
+      background: transparent; border: 1px solid #888; color: #dddddd;
+      font-family: monospace; font-size: 15px; padding: 12px 40px;
+      cursor: pointer; letter-spacing: 3px; border-radius: 8px;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    #start-btn:hover { background: #222; border-color: #ccc; color: #fff; }
+
+    /* HUD */
+    #hud {
+      display: none; width: min(900px, 96vw);
+      justify-content: space-between; align-items: center;
+    }
+    .hud-btn {
+      background: transparent; border: 1px solid #666; color: #cccccc;
+      font-family: monospace; font-size: 12px; padding: 4px 12px;
+      cursor: pointer; letter-spacing: 1px; border-radius: 6px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .hud-btn:hover { border-color: #ccc; color: #fff; }
+    .hud-btn:disabled { opacity: 0.3; cursor: default; }
+    .hud-btn:disabled:hover { border-color: #666; color: #cccccc; }
+    #score-display { font-size: 13px; letter-spacing: 1px; color: #cccccc; }
+
+    /* Game area: canvas + log panel side by side */
+    #game-area {
+      display: none; align-items: flex-start; gap: 12px;
+    }
+    #game { display: block; border: 2px solid #444; border-radius: 4px; flex-shrink: 0; }
+
+    /* Tournament log panel */
+    #log-panel {
+      display: none;
+      width: 200px;
+      max-height: 600px;
+      overflow-y: auto;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 4px;
+      font-size: 10px;
+      color: #888;
+      flex-shrink: 0;
+    }
+    #log-panel table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    #log-panel th {
+      position: sticky; top: 0;
+      background: #222; color: #aaa;
+      font-size: 9px; letter-spacing: 1px;
+      padding: 4px 4px; text-align: left;
+      border-bottom: 1px solid #333;
+    }
+    #log-panel td {
+      padding: 3px 4px; vertical-align: top;
+      border-bottom: 1px solid #222;
+      color: #777; word-break: break-all;
+    }
+    #log-panel td.score { color: #cccccc; font-size: 11px; font-weight: bold; }
+    #log-panel td.json { font-size: 8px; color: #555; white-space: pre-wrap; }
+    #log-panel::-webkit-scrollbar { width: 4px; }
+    #log-panel::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <canvas id="bg-canvas"></canvas>
+  <script>
+    (function(){
+      const bc=document.getElementById('bg-canvas'),bctx=bc.getContext('2d');
+      function drawBg(){bc.width=window.innerWidth;bc.height=window.innerHeight;bctx.fillStyle='#2e2e2e';bctx.fillRect(0,0,bc.width,bc.height);for(let i=0;i<bc.width*bc.height*0.012;i++){const x=Math.random()*bc.width,y=Math.random()*bc.height,r=Math.random()*1.3+0.3;const bright=Math.random()>0.5?'rgba(255,255,255,':'rgba(0,0,0,';const alpha=(0.03+Math.random()*0.09).toFixed(2);bctx.fillStyle=bright+alpha+')';bctx.beginPath();bctx.arc(x,y,r,0,Math.PI*2);bctx.fill();}}
+      drawBg();window.addEventListener('resize',drawBg);
+    })();
+  </script>
+
+  <button id="hub-btn" onclick="returnToHub()">← Back To Hub</button>
+  <script>
+    function returnToHub(){
+      if(window.parent!==window){window.parent.postMessage('returnToHub','*');}
+      else{alert("This game is currently running on your device. To return to the hub, please visit the website or install it locally.");}
+    }
+  </script>
+
+  <div id="menu">
+    <h1>FIVE DICE</h1>
+    <div class="option-group">
+
+      <!-- Tournament Mode -->
+      <div class="toggle-row">
+        <span class="toggle-label highlight">TOURNAMENT MODE</span>
+        <label class="toggle-pill">
+          <input type="checkbox" id="opt-tournament">
+          <div class="pill-track"></div><div class="pill-thumb"></div>
+        </label>
+      </div>
+      <div id="tourn-games-row" class="hidden">
+        <label for="tourn-games-val">NUMBER OF GAMES</label>
+        <input type="number" id="tourn-games-val" value="6" min="1" max="1000">
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Rules (locked in tournament) -->
+      <div id="rules-block">
+        <div class="toggle-row">
+          <span class="toggle-label">POINT BONUS ON NUMBERS</span>
+          <label class="toggle-pill">
+            <input type="checkbox" id="opt-bonus" checked>
+            <div class="pill-track"></div><div class="pill-thumb"></div>
+          </label>
+        </div>
+        <div id="bonus-row">
+          <label for="bonus-val">BONUS IF ≥63 PTS</label>
+          <input type="number" id="bonus-val" value="35" min="0" max="999">
+        </div>
+
+        <div class="toggle-row">
+          <span class="toggle-label">5-OF-A-KIND BONUS SCORING</span>
+          <label class="toggle-pill">
+            <input type="checkbox" id="opt-5kind-bonus" checked>
+            <div class="pill-track"></div><div class="pill-thumb"></div>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <span class="toggle-label">5-OF-A-KIND WILD CARD AFTER FIRST</span>
+          <label class="toggle-pill">
+            <input type="checkbox" id="opt-5kind-wild" checked>
+            <div class="pill-track"></div><div class="pill-thumb"></div>
+          </label>
+        </div>
+
+        <div class="sub-option" id="sub-5kind-always-wild">
+          <div class="toggle-row">
+            <span class="toggle-label" style="color:#777">5-OF-A-KIND ALWAYS WILD CARD</span>
+            <label class="toggle-pill">
+              <input type="checkbox" id="opt-5kind-always-wild">
+              <div class="pill-track"></div><div class="pill-thumb"></div>
+            </label>
+          </div>
+        </div>
+
+        <div class="toggle-row">
+          <span class="toggle-label">STRICT 5-OF-A-KIND ASSIGNMENTS</span>
+          <label class="toggle-pill">
+            <input type="checkbox" id="opt-5kind-strict" checked>
+            <div class="pill-track"></div><div class="pill-thumb"></div>
+          </label>
+        </div>
+      </div><!-- /rules-block -->
+
+    </div>
+    <button id="start-btn">START</button>
+  </div>
+
+  <div id="hud">
+    <button id="reset-btn" class="hud-btn">RESTART</button>
+    <span id="score-display">ROUND 1 / 13</span>
+    <button id="menu-btn" class="hud-btn">MENU</button>
+  </div>
+
+  <div id="game-area">
+    <canvas id="game"></canvas>
+    <div id="log-panel">
+      <table id="log-table">
+        <thead><tr><th>#</th><th>SCORE</th><th>SCORECARD</th></tr></thead>
+        <tbody id="log-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="./game.js"></script>
+
+  <script>
+    const optTournament = document.getElementById('opt-tournament');
+    const tournGamesRow = document.getElementById('tourn-games-row');
+    const rulesBlock    = document.getElementById('rules-block');
+    const optBonus      = document.getElementById('opt-bonus');
+    const bonusRow      = document.getElementById('bonus-row');
+    const optWild       = document.getElementById('opt-5kind-wild');
+    const subAlways     = document.getElementById('sub-5kind-always-wild');
+
+    // Tournament rules presets
+    const TOURNAMENT_RULES = {
+      bonusEnabled: true, bonusAmount: 35,
+      fiveKindBonus: true, wildAfterFirst: true,
+      alwaysWild: false, strict5Kind: true,
+    };
+
+    function applyTournamentPreset(on) {
+      rulesBlock.classList.toggle('locked', on);
+      if (on) {
+        document.getElementById('opt-bonus').checked        = TOURNAMENT_RULES.bonusEnabled;
+        document.getElementById('bonus-val').value          = TOURNAMENT_RULES.bonusAmount;
+        document.getElementById('opt-5kind-bonus').checked= TOURNAMENT_RULES.fiveKindBonus;
+        document.getElementById('opt-5kind-wild').checked         = TOURNAMENT_RULES.wildAfterFirst;
+        document.getElementById('opt-5kind-always-wild').checked  = TOURNAMENT_RULES.alwaysWild;
+        document.getElementById('opt-5kind-strict').checked       = TOURNAMENT_RULES.strict5Kind;
+        bonusRow.classList.remove('hidden');
+        subAlways.classList.add('hidden');
+      }
+    }
+
+    optTournament.addEventListener('change', () => {
+      const on = optTournament.checked;
+      tournGamesRow.classList.toggle('hidden', !on);
+      applyTournamentPreset(on);
+    });
+    optBonus.addEventListener('change', () => {
+      bonusRow.classList.toggle('hidden', !optBonus.checked);
+    });
+    optWild.addEventListener('change', () => {
+      subAlways.classList.toggle('hidden', !optWild.checked);
+    });
+
+    document.getElementById('start-btn').addEventListener('click', () => {
+      const isTournament = optTournament.checked;
+      const numGames     = isTournament ? Math.max(1, Math.min(1000, parseInt(document.getElementById('tourn-games-val').value)||6)) : 1;
+      const rules = {
+        bonusEnabled:   document.getElementById('opt-bonus').checked,
+        bonusThreshold: 63,
+        bonusAmount:    parseInt(document.getElementById('bonus-val').value) || 35,
+        fiveKindBonus:   document.getElementById('opt-5kind-bonus').checked,
+        wildAfterFirst: document.getElementById('opt-5kind-wild').checked,
+        alwaysWild:     document.getElementById('opt-5kind-always-wild').checked,
+        strict5Kind:  document.getElementById('opt-5kind-strict').checked,
+        tournament:     isTournament,
+        numGames,
+      };
+      document.getElementById('menu').style.display      = 'none';
+      document.getElementById('hud').style.display       = 'flex';
+      document.getElementById('game-area').style.display = 'flex';
+
+      // Show log panel only in tournament
+      document.getElementById('log-panel').style.display = isTournament ? 'block' : 'none';
+      document.getElementById('log-tbody').innerHTML = '';
+
+      // Lock/unlock HUD buttons
+      document.getElementById('reset-btn').disabled = isTournament;
+      document.getElementById('menu-btn').disabled  = isTournament;
+
+      startGame(rules);
+    });
+
+    document.getElementById('reset-btn').addEventListener('click', () => {
+      if (typeof restartGame === 'function') restartGame();
+    });
+    document.getElementById('menu-btn').addEventListener('click', () => { returnToMenu(); });
+
+    function returnToMenu() {
+      document.getElementById('menu').style.display      = 'flex';
+      document.getElementById('hud').style.display       = 'none';
+      document.getElementById('game-area').style.display = 'none';
+      document.getElementById('log-panel').style.display = 'none';
+      if (typeof resetGame === 'function') resetGame();
+    }
+
+    // Called by game.js when a game ends in tournament mode
+    function addTournamentLogEntry(gameNum, total, scorecardSnap) {
+      const tbody = document.getElementById('log-tbody');
+      const tr = document.createElement('tr');
+      const jsonStr = JSON.stringify(scorecardSnap, null, 2);
+      tr.innerHTML =
+        `<td>${gameNum}</td>` +
+        `<td class="score">${total}</td>` +
+        `<td class="json">${jsonStr}</td>`;
+      tbody.prepend(tr); // newest on top
+      // scroll to top
+      document.getElementById('log-panel').scrollTop = 0;
+    }
+
+    // Unlock HUD buttons when tournament completes
+    function onTournamentComplete() {
+      document.getElementById('reset-btn').disabled = false;
+      document.getElementById('menu-btn').disabled  = false;
+    }
+  </script>
+</body>
+</html>
