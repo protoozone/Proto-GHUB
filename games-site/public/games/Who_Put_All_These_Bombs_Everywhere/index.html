@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Minesweeper</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+
+    :root {
+      --bg:         #c0c0c0;
+      --panel-bg:   #c0c0c0;
+      --face-mid:   #c0c0c0;
+      --face-light: #ffffff;
+      --face-dark:  #808080;
+      --face-vdark: #404040;
+      --text-ui:    #000000;
+      --btn-text:   #000000;
+      --num1: #0000ff; --num2: #008000; --num3: #ff0000;
+      --num4: #000080; --num5: #800000; --num6: #008080;
+      --num7: #000000; --num8: #808080;
+      --mine-color: #000000;
+      --flag-color: #ff0000;
+      --lcd-bg: #000000;
+      --lcd-fg: #ff0000;
+      --overlay-bg: rgba(0,0,0,0.55);
+      --sb-track: #a0a0a0;
+      --sb-thumb: #606060;
+    }
+    body.dark {
+      --bg:         #1e2228;
+      --panel-bg:   #252b33;
+      --face-mid:   #2e3540;
+      --face-light: #4a5568;
+      --face-dark:  #141820;
+      --face-vdark: #0a0d12;
+      --text-ui:    #d0dcea;
+      --btn-text:   #c8d8ea;
+      --num1: #5eb8ff; --num2: #7ddf9a; --num3: #ff6b6b;
+      --num4: #a78bfa; --num5: #f59e0b; --num6: #22d3ee;
+      --num7: #e2e8f0; --num8: #94a3b8;
+      --mine-color: #8899aa;
+      --flag-color: #f87171;
+      --lcd-bg: #001408;
+      --lcd-fg: #33ff88;
+      --overlay-bg: rgba(0,0,0,0.7);
+      --sb-track: #1a1f28;
+      --sb-thumb: #4a5568;
+    }
+
+    body {
+      background: var(--bg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 16px 8px 32px;
+      font-family: 'Courier New', Courier, monospace;
+      color: var(--text-ui);
+      transition: background 0.2s, color 0.2s;
+      gap: 10px;
+    }
+
+    #top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: min(780px, 100%);
+      gap: 10px;
+    }
+    #top-bar h1 { font-size: clamp(13px, 3vw, 18px); letter-spacing: 4px; font-weight: 700; }
+
+    .toggle-pill {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 10px; letter-spacing: 1px;
+      cursor: pointer; user-select: none; color: var(--text-ui);
+    }
+    .toggle-track {
+      width: 30px; height: 16px; background: var(--face-dark);
+      border-top: 2px solid var(--face-vdark); border-left: 2px solid var(--face-vdark);
+      border-bottom: 2px solid var(--face-light); border-right: 2px solid var(--face-light);
+      border-radius: 999px; position: relative;
+    }
+    .toggle-thumb {
+      position: absolute; left: 2px; top: 2px;
+      width: 8px; height: 8px; background: var(--face-light);
+      border-radius: 50%; transition: left 0.15s;
+    }
+    .toggle-pill.on .toggle-thumb { left: 16px; }
+
+    #main-panel {
+      background: var(--panel-bg);
+      border-top: 4px solid var(--face-light); border-left: 4px solid var(--face-light);
+      border-bottom: 4px solid var(--face-vdark); border-right: 4px solid var(--face-vdark);
+      padding: 8px; display: flex; flex-direction: column; gap: 8px;
+      width: min(780px, 100%);
+    }
+
+    #header-row {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--panel-bg);
+      border-top: 3px solid var(--face-dark); border-left: 3px solid var(--face-dark);
+      border-bottom: 3px solid var(--face-light); border-right: 3px solid var(--face-light);
+      padding: 6px 10px; gap: 8px;
+    }
+
+    .lcd {
+      background: var(--lcd-bg); color: var(--lcd-fg);
+      font-family: 'Courier New', monospace; font-weight: 700;
+      letter-spacing: 2px; padding: 3px 7px; text-align: right;
+      border-top: 2px solid var(--face-vdark); border-left: 2px solid var(--face-vdark);
+      border-bottom: 2px solid var(--face-light); border-right: 2px solid var(--face-light);
+      user-select: none; white-space: nowrap;
+    }
+    #mine-lcd  { font-size: 20px; min-width: 80px; }
+    #timer-lcd { font-size: 20px; min-width: 90px; }
+
+    .ms-btn {
+      background: var(--face-mid);
+      border-top: 3px solid var(--face-light); border-left: 3px solid var(--face-light);
+      border-bottom: 3px solid var(--face-vdark); border-right: 3px solid var(--face-vdark);
+      color: var(--btn-text); font-family: 'Courier New', monospace;
+      font-size: 11px; font-weight: 700; letter-spacing: 2px;
+      padding: 6px 14px; cursor: pointer; white-space: nowrap;
+    }
+    .ms-btn:active {
+      border-top: 3px solid var(--face-vdark); border-left: 3px solid var(--face-vdark);
+      border-bottom: 3px solid var(--face-light); border-right: 3px solid var(--face-light);
+    }
+
+    #controls-row {
+      display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; padding: 4px 2px;
+    }
+    #diff-wrap { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .diff-label { font-size: 10px; letter-spacing: 2px; }
+    .diff-btn {
+      background: var(--face-mid);
+      border-top: 2px solid var(--face-light); border-left: 2px solid var(--face-light);
+      border-bottom: 2px solid var(--face-dark); border-right: 2px solid var(--face-dark);
+      color: var(--btn-text); font-family: 'Courier New', monospace;
+      font-size: 10px; letter-spacing: 1px; padding: 4px 9px; cursor: pointer; white-space: nowrap;
+    }
+    .diff-btn:hover { filter: brightness(1.08); }
+    .diff-btn.active {
+      border-top: 2px solid var(--face-dark); border-left: 2px solid var(--face-dark);
+      border-bottom: 2px solid var(--face-light); border-right: 2px solid var(--face-light);
+      filter: none;
+    }
+
+    #custom-wrap {
+      display: none; flex-direction: column; gap: 5px; padding: 6px 8px;
+      background: var(--panel-bg);
+      border-top: 2px solid var(--face-dark); border-left: 2px solid var(--face-dark);
+      border-bottom: 2px solid var(--face-light); border-right: 2px solid var(--face-light);
+    }
+    .custom-row {
+      display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+      font-size: 10px; letter-spacing: 1px;
+    }
+    #custom-wrap input[type=number] {
+      background: var(--face-mid);
+      border-top: 2px solid var(--face-dark); border-left: 2px solid var(--face-dark);
+      border-bottom: 2px solid var(--face-light); border-right: 2px solid var(--face-light);
+      color: var(--text-ui); font-family: 'Courier New', monospace;
+      font-size: 11px; width: 52px; padding: 3px 5px; text-align: center; outline: none;
+    }
+    #cust-pct { width: 44px; }
+    #custom-wrap input::-webkit-inner-spin-button,
+    #custom-wrap input::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .mine-mode-btn {
+      background: var(--face-mid);
+      border-top: 2px solid var(--face-light); border-left: 2px solid var(--face-light);
+      border-bottom: 2px solid var(--face-dark); border-right: 2px solid var(--face-dark);
+      color: var(--btn-text); font-family: 'Courier New', monospace;
+      font-size: 9px; letter-spacing: 1px; padding: 3px 7px; cursor: pointer; white-space: nowrap;
+    }
+    .mine-mode-btn.active {
+      border-top: 2px solid var(--face-dark); border-left: 2px solid var(--face-dark);
+      border-bottom: 2px solid var(--face-light); border-right: 2px solid var(--face-light);
+    }
+
+    .spacer { flex: 1; min-width: 8px; }
+
+    #timer-wrap {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 10px; letter-spacing: 1px; flex-wrap: wrap;
+    }
+    #timer-wrap input[type=number] {
+      background: var(--face-mid);
+      border-top: 2px solid var(--face-dark); border-left: 2px solid var(--face-dark);
+      border-bottom: 2px solid var(--face-light); border-right: 2px solid var(--face-light);
+      color: var(--text-ui); font-family: 'Courier New', monospace;
+      font-size: 10px; width: 36px; padding: 3px 4px; text-align: center; outline: none;
+    }
+    #timer-wrap input::-webkit-inner-spin-button,
+    #timer-wrap input::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .sm-btn {
+      background: var(--face-mid);
+      border-top: 2px solid var(--face-light); border-left: 2px solid var(--face-light);
+      border-bottom: 2px solid var(--face-dark); border-right: 2px solid var(--face-dark);
+      color: var(--btn-text); font-family: 'Courier New', monospace;
+      font-size: 9px; letter-spacing: 1px; padding: 3px 8px; cursor: pointer; white-space: nowrap;
+    }
+    .sm-btn:active {
+      border-top: 2px solid var(--face-dark); border-left: 2px solid var(--face-dark);
+      border-bottom: 2px solid var(--face-light); border-right: 2px solid var(--face-light);
+    }
+
+    /* CANVAS */
+    #canvas-outer { position: relative; width: 100%; }
+    #canvas-scroll {
+      overflow: auto;
+      border-top: 3px solid var(--face-dark); border-left: 3px solid var(--face-dark);
+      border-bottom: 3px solid var(--face-light); border-right: 3px solid var(--face-light);
+      max-height: 70vh;
+    }
+    #canvas-scroll::-webkit-scrollbar { width: 12px; height: 12px; }
+    #canvas-scroll::-webkit-scrollbar-track {
+      background: var(--sb-track);
+      border-top: 2px solid var(--face-dark); border-left: 2px solid var(--face-dark);
+    }
+    #canvas-scroll::-webkit-scrollbar-thumb {
+      background: var(--sb-thumb);
+      border-top: 2px solid var(--face-light); border-left: 2px solid var(--face-light);
+      border-bottom: 2px solid var(--face-vdark); border-right: 2px solid var(--face-vdark);
+    }
+    #canvas-scroll::-webkit-scrollbar-corner { background: var(--sb-track); }
+    #canvas-wrap {
+      cursor: default; user-select: none; -webkit-user-select: none;
+      touch-action: none; -webkit-touch-callout: none;
+      display: inline-block; line-height: 0;
+    }
+    #canvas { display: block; touch-action: none; -webkit-touch-callout: none; }
+
+    /* FLAG PALETTE */
+    #flag-palette-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 2px 0;
+      border-top: 2px solid var(--face-dark);
+    }
+    #flag-palette {
+      cursor: grab; touch-action: none;
+      -webkit-touch-callout: none; user-select: none; -webkit-user-select: none;
+      display: inline-block; line-height: 0;
+      border-top: 2px solid var(--face-light); border-left: 2px solid var(--face-light);
+      border-bottom: 2px solid var(--face-vdark); border-right: 2px solid var(--face-vdark);
+      flex-shrink: 0;
+    }
+    #flag-palette:active { cursor: grabbing; }
+    #flag-palette-hint {
+      font-size: 9px; letter-spacing: 1px; opacity: 0.5; color: var(--text-ui);
+    }
+
+    /* Floating drag ghost */
+    #flag-drag-icon {
+      display: none; position: fixed;
+      width: 36px; height: 36px;
+      pointer-events: none; z-index: 99999; opacity: 0.85;
+    }
+
+    /* OVERLAY */
+    #overlay {
+      display: none; position: fixed; inset: 0;
+      background: var(--overlay-bg);
+      align-items: center; justify-content: center;
+      flex-direction: column; gap: 14px; z-index: 9999; cursor: pointer;
+    }
+    #overlay.show { display: flex; }
+    #overlay-box {
+      background: var(--panel-bg);
+      border-top: 4px solid var(--face-light); border-left: 4px solid var(--face-light);
+      border-bottom: 4px solid var(--face-vdark); border-right: 4px solid var(--face-vdark);
+      padding: 28px 48px; display: flex; flex-direction: column;
+      align-items: center; gap: 12px; pointer-events: none;
+    }
+    #overlay-msg {
+      font-size: clamp(22px, 5vw, 36px); font-weight: 700;
+      letter-spacing: 4px; color: var(--text-ui);
+    }
+    #overlay-sub { font-size: 11px; letter-spacing: 3px; color: var(--text-ui); opacity: 0.6; }
+
+    #status-bar {
+      font-size: 10px; letter-spacing: 1.5px;
+      color: var(--text-ui); opacity: 0.5; text-align: center; padding: 2px 0 0;
+    }
+  </style>
+</head>
+<body>
+
+  <script>
+    function returnToHub() {
+      if (window.parent !== window) window.parent.postMessage('returnToHub', '*');
+      else alert("This game is currently running on your device. To return to the hub, please visit the website or install it locally.");
+    }
+  </script>
+
+  <button class="ms-btn" onclick="returnToHub()">&larr; BACK TO HUB</button>
+
+  <div id="top-bar">
+    <h1>MINESWEEPER</h1>
+    <label class="toggle-pill" id="dark-toggle">
+      DARK
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+    </label>
+  </div>
+
+  <div id="main-panel">
+    <div id="header-row">
+      <div class="lcd" id="mine-lcd">00010</div>
+      <button class="ms-btn" id="reset-btn">RESET</button>
+      <div class="lcd" id="timer-lcd">00:00:00</div>
+    </div>
+
+    <div id="controls-row">
+      <div id="diff-wrap">
+        <span class="diff-label">DIFFICULTY:</span>
+        <button class="diff-btn active" data-diff="beginner">BEGINNER</button>
+        <button class="diff-btn" data-diff="intermediate">INTERMEDIATE</button>
+        <button class="diff-btn" data-diff="expert">EXPERT</button>
+        <button class="diff-btn" data-diff="custom">CUSTOM</button>
+      </div>
+
+      <div id="custom-wrap">
+        <div class="custom-row">
+          <span>W</span>
+          <input type="number" id="cust-w" value="16" min="1" max="1000"/>
+          <span>H</span>
+          <input type="number" id="cust-h" value="16" min="1" max="1000"/>
+          <button class="mine-mode-btn active" id="mode-count">COUNT</button>
+          <button class="mine-mode-btn" id="mode-pct">%</button>
+        </div>
+        <div class="custom-row">
+          <span id="mine-input-label">MINES</span>
+          <input type="number" id="cust-m" value="40" min="0" max="99999"/>
+          <input type="number" id="cust-pct" value="15" min="1" max="99" style="display:none"/>
+          <span id="pct-symbol" style="display:none">%</span>
+          <button class="sm-btn" id="apply-custom">APPLY</button>
+        </div>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div id="timer-wrap">
+        <span>TIMER</span>
+        <input type="number" id="t-h" value="0" min="0" max="99" placeholder="HH"/>
+        <span>:</span>
+        <input type="number" id="t-m" value="0" min="0" max="59" placeholder="MM"/>
+        <span>:</span>
+        <input type="number" id="t-s" value="0" min="0" max="59" placeholder="SS"/>
+        <button class="sm-btn" id="apply-timer">SET</button>
+        <button class="sm-btn" id="clear-timer">COUNT UP</button>
+      </div>
+    </div>
+
+    <div id="canvas-outer">
+      <div id="canvas-scroll">
+        <div id="canvas-wrap">
+          <canvas id="canvas"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div id="flag-palette-row">
+      <div id="flag-palette">
+        <canvas id="palette-flag-canvas" width="36" height="36"></canvas>
+      </div>
+      <span id="flag-palette-hint">DRAG CELL TO FLAG, HOLD CLICK, OR RIGHT CLICK</span>
+    </div>
+  </div>
+
+  <canvas id="flag-drag-icon" width="36" height="36"></canvas>
+
+  <div id="overlay">
+    <div id="overlay-box">
+      <div id="overlay-msg"></div>
+      <div id="overlay-sub">CLICK ANYWHERE TO RESET</div>
+    </div>
+  </div>
+
+  <script src="./game.js"></script>
+</body>
+</html>

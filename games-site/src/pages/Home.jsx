@@ -277,9 +277,9 @@ export default function Home() {
             <div className="column"><GameCard to="/games/Clocks_Out" name="Clock's Out" artSrc="/assets/'clocksout'.png" /></div>
           </div>
           <div className="row">
+            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
             <div className="column"><GameCard to="/games/Five_Dice" name="Five Dice" artSrc="/assets/'fivedice'.png" /></div>
-            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
-            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
+            <div className="column"><GameCard to="/games/Who_Put_All_These_Bombs_Everywhere" name="Who Put All These Bombs Everywhere?!" artSrc="/assets/'wpatbe'.png" /></div>
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
           </div>
         </div>
