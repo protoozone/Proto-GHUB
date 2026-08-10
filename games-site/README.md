@@ -40,16 +40,16 @@ Vercel
 # Roadmap
 Up next for implementation:
 - More rule and handicap varieties for chess
-- Sweeping mines
 - Konkey Dong
 - Polished balls on a table with pockets
+- A man shaped like a puc, call him puc man
+- Connecting between 3 and 5 things
 
 And for future plans, we have: 
 - A bunch of small fellas shooting each other
 - Make many jumps to scale a tower
 - Punch your way through an alley
 - With this amount of bullets, this place might be hell
-- A man shaped like a puc, call him puc man
 - This tower really needs some defending
 - Cards by yourself
 - Big words daily
@@ -79,3 +79,9 @@ See LICENSE for details.
 - Added Clock's Out [this one's an original]
 - Added Little Shooter (Space Invaders)
 - Added Demolition (Brick Breaker)
+
+# 0.3 Patch Notes 
+- Added Who Put All These Bombs Everywhere? (Minesweeper)
+- Added Connect N (Tic Tac Toe and Gomoku)
+- Still having issues with Pocket Balls (Pool)
+- Puckman is actually kinda complicated (Pacman)
