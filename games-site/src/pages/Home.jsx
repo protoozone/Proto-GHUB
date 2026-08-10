@@ -282,6 +282,12 @@ export default function Home() {
             <div className="column"><GameCard to="/games/Who_Put_All_These_Bombs_Everywhere" name="Who Put All These Bombs Everywhere?!" artSrc="/assets/'wpatbe'.png" /></div>
             <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
           </div>
+          <div className="row">
+            <div className="column"><GameCard to="/games/Connect_N" name="Connect N" artSrc="/assets/'connectN'.png" /></div>
+            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
+            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
+            <div className="column"><div className="coming-soon-card">Coming Soon</div></div>
+          </div>
         </div>
 
         {/* Right tron wall */}

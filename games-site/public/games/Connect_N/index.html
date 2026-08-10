@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Connect N</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #000000;
+      --text: #ffffff;
+      --border: #333333;
+    }
+
+    body.light {
+      --bg: #ffffff;
+      --text: #000000;
+      --border: #cccccc;
+    }
+
+    body {
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: monospace;
+      color: var(--text);
+      gap: 12px;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    #menu {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 32px;
+    }
+
+    #menu h1 {
+      font-size: 28px;
+      color: var(--text);
+      letter-spacing: 4px;
+    }
+
+    .option-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .option-group label {
+      font-size: 12px;
+      color: var(--text);
+      letter-spacing: 2px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .opt-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: monospace;
+      font-size: 13px;
+      padding: 8px 16px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: border-color 0.1s, color 0.1s;
+    }
+
+    .opt-btn:hover { border-color: var(--text); color: var(--text); }
+    .opt-btn.selected { border-color: var(--text); color: var(--text); }
+
+    #start-btn {
+      background: transparent;
+      border: 1px solid var(--text);
+      color: var(--text);
+      font-family: monospace;
+      font-size: 15px;
+      padding: 12px 40px;
+      cursor: pointer;
+      letter-spacing: 3px;
+    }
+
+    #start-btn:hover { background: var(--text); color: var(--bg); }
+
+    #hud {
+      display: none;
+      width: 100%;
+      max-width: 600px;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #hud.visible { display: flex; }
+
+    .hud-btn {
+      background: transparent;
+      border: 1px solid var(--text);
+      color: var(--text);
+      font-family: monospace;
+      font-size: 12px;
+      padding: 4px 12px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: background 0.1s, color 0.1s;
+    }
+
+    .hud-btn:hover { background: var(--text); color: var(--bg); }
+
+    #player-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      letter-spacing: 2px;
+      color: var(--text);
+    }
+
+    #player-symbol-preview {
+      width: 20px;
+      height: 20px;
+      image-rendering: pixelated;
+    }
+
+    #turn-timer {
+      font-size: 12px;
+      letter-spacing: 2px;
+      color: var(--text);
+      min-width: 48px;
+      text-align: center;
+    }
+
+    .mode-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: monospace;
+      font-size: 11px;
+      padding: 4px 12px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+
+    .mode-btn:hover { background: var(--text); color: var(--bg); }
+    .mode-btn:active { opacity: 0.7; }
+
+    #section-players,
+    #section-go-first,
+    #section-difficulty,
+    #section-custom,
+    #section-player-marks {
+      display: none;
+    }
+
+    #section-players.visible,
+    #section-go-first.visible,
+    #section-difficulty.visible,
+    #section-custom.visible,
+    #section-player-marks.visible {
+      display: flex;
+    }
+
+    #section-custom {
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #section-custom input[type="number"],
+    #section-custom textarea {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: monospace;
+      font-size: 13px;
+      padding: 6px 10px;
+      width: 80px;
+      outline: none;
+      text-align: center;
+    }
+
+    #section-custom textarea {
+      width: 200px;
+      height: 80px;
+      resize: vertical;
+      text-align: left;
+    }
+
+    #section-player-marks {
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .player-mark-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      letter-spacing: 1px;
+      color: var(--text);
+    }
+
+    .mark-preview {
+      width: 30px;
+      height: 30px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      image-rendering: pixelated;
+      transition: border-color 0.1s;
+    }
+
+    .mark-preview:hover { border-color: var(--text); }
+
+    #game-area {
+      display: none;
+    }
+
+    #game-area.visible { display: block; }
+
+    #canvas-scroll {
+      overflow: auto;
+      max-width: 100vw;
+      max-height: calc(100vh - 120px);
+      cursor: pointer;
+    }
+
+    #game {
+      display: block;
+      image-rendering: pixelated;
+    }
+
+    /* ── SYMBOL EDITOR ── */
+    #symbol-editor-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    body.light #symbol-editor-overlay { background: rgba(255,255,255,0.88); }
+
+    #symbol-editor-overlay.visible { display: flex; }
+
+    #symbol-editor-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    #symbol-editor-box h2 {
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--text);
+    }
+
+    #pixel-grid {
+      display: grid;
+      grid-template-columns: repeat(10, 22px);
+      grid-template-rows: repeat(10, 22px);
+      gap: 1px;
+      background: var(--border);
+      border: 1px solid var(--border);
+      cursor: crosshair;
+      user-select: none;
+    }
+
+    .pixel-cell {
+      width: 22px;
+      height: 22px;
+      background: var(--bg);
+    }
+
+    .pixel-cell.on { background: var(--text); }
+
+    .editor-btn-row { display: flex; gap: 8px; }
+
+    /* ── WIN OVERLAY ── */
+    #win-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      align-items: center;
+      justify-content: center;
+      z-index: 300;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    body.light #win-overlay { background: rgba(255,255,255,0.88); }
+
+    #win-overlay.visible { display: flex; }
+
+    #win-box {
+      background: var(--bg);
+      border: 1px solid var(--text);
+      padding: 40px 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      text-align: center;
+    }
+
+    #win-message {
+      font-size: 22px;
+      letter-spacing: 4px;
+      color: var(--text);
+    }
+
+    #win-sub {
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: var(--text);
+      opacity: 0.6;
+    }
+
+    #win-canvas { image-rendering: pixelated; }
+
+    .win-btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <button class="mode-btn" id="toggleMode">LIGHT MODE</button>
+  <button class="opt-btn" id="hub-btn">← Back To Hub</button>
+
+  <div id="menu">
+    <h1>CONNECT N</h1>
+
+    <div class="option-group">
+      <label>TYPE</label>
+      <div class="btn-row">
+        <button class="opt-btn" data-group="type" data-value="3">CONNECT 3</button>
+        <button class="opt-btn" data-group="type" data-value="5">CONNECT 5</button>
+        <button class="opt-btn" data-group="type" data-value="custom">CUSTOM</button>
+      </div>
+    </div>
+
+    <div class="option-group" id="section-players">
+      <label>PLAYERS</label>
+      <div class="btn-row">
+        <button class="opt-btn" data-group="players" data-value="1">1 PLAYER</button>
+        <button class="opt-btn" data-group="players" data-value="2">2 PLAYERS</button>
+      </div>
+    </div>
+
+    <div class="option-group" id="section-go-first">
+      <label>YOU GO</label>
+      <div class="btn-row">
+        <button class="opt-btn" data-group="gofirst" data-value="1">FIRST</button>
+        <button class="opt-btn" data-group="gofirst" data-value="2">SECOND</button>
+      </div>
+    </div>
+
+    <div class="option-group" id="section-difficulty">
+      <label>DIFFICULTY</label>
+      <div class="btn-row">
+        <button class="opt-btn" data-group="diff" data-value="easy">EASY</button>
+        <button class="opt-btn" data-group="diff" data-value="normal">NORMAL</button>
+        <button class="opt-btn" data-group="diff" data-value="hard">HARD</button>
+      </div>
+    </div>
+
+    <div class="option-group" id="section-custom">
+      <label>N IN A ROW</label>
+      <input type="number" id="input-n-in-a-row" min="2" value="5" />
+      <label>GRID SIZE</label>
+      <div class="btn-row">
+        <input type="number" id="input-grid-w" min="2" value="15" />
+        <span>×</span>
+        <input type="number" id="input-grid-h" min="2" value="15" />
+      </div>
+      <label>N PLAYERS</label>
+      <input type="number" id="input-n-players" min="2" max="10" value="2" />
+      <label>MISSING TILES</label>
+      <textarea id="input-missing-tiles" placeholder="x,y per line"></textarea>
+    </div>
+
+    <div id="section-player-marks">
+      <label style="font-size:11px;letter-spacing:2px;">PLAYER MARKS</label>
+      <div id="marks-list"></div>
+    </div>
+
+    <button id="start-btn">START</button>
+  </div>
+
+  <div id="hud">
+    <button class="hud-btn" id="quit-btn">QUIT</button>
+    <div id="player-indicator">
+      <canvas id="player-symbol-preview" width="20" height="20"></canvas>
+      <span id="player-label">PLAYER 1</span>
+    </div>
+    <span id="turn-timer">00:00</span>
+    <button class="hud-btn" id="reset-btn">RESET</button>
+  </div>
+
+  <div id="game-area">
+    <div id="canvas-scroll">
+      <canvas id="game"></canvas>
+    </div>
+  </div>
+
+  <!-- SYMBOL EDITOR -->
+  <div id="symbol-editor-overlay">
+    <div id="symbol-editor-box">
+      <h2>DRAW YOUR MARK</h2>
+      <div id="pixel-grid"></div>
+      <div class="editor-btn-row">
+        <button class="opt-btn" id="editor-clear">CLEAR</button>
+        <button class="opt-btn" id="editor-save">SAVE</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WIN OVERLAY -->
+  <div id="win-overlay">
+    <div id="win-box">
+      <canvas id="win-canvas" width="60" height="60"></canvas>
+      <div id="win-message">PLAYER 1 WINS!</div>
+      <div id="win-sub">CONNECT 5 ACHIEVED</div>
+      <div class="win-btn-row">
+        <button class="opt-btn" id="win-reset-btn">PLAY AGAIN</button>
+        <button class="opt-btn" id="win-menu-btn">MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('hub-btn').addEventListener('click', () => {
+      if (window.parent !== window) {
+        window.parent.postMessage('returnToHub', '*')
+      } else {
+        alert("This game is currently running on your device. To return to the hub, please visit the website or install it locally.")
+      }
+    })
+  </script>
+  <script src="./game.js"></script>
+</body>
+</html>
