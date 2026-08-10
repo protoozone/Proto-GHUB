@@ -19,6 +19,8 @@ The project currently hosts:
 - Clock's Out
 - Pocket Balls
 - Five Dice
+- Who Put All These Bombs Everywhere?
+- Connect N
 
 # Local Installation and Running
 ```
