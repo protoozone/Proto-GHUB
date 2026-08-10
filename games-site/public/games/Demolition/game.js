@@ -463,7 +463,7 @@ function endGame(won) {
     ctx.font = "bold 20px monospace"
     ctx.textAlign = "center"
     ctx.fillText(won ? "DEMOLITION COMPLETE!" : "GAME OVER", W / 2, H / 2)
-    ctx.fillText(`Score: ${Math.max(0, score + ((lives-1)*185))}`, W / 2, H / 2 + 30)
+    ctx.fillText(`Score: ${Math.max(0, Math.ceil(score*(1+(lives*0.14682253968))))}`, W / 2, H / 2 + 30)
     ctx.font = "13px monospace"
     ctx.fillStyle = "#aaaaaa"
     ctx.fillText("ESC: Back to Main Menu", W / 2, H / 2 + 56)
