@@ -10,38 +10,73 @@
       --bg: #000000;
       --text: #ffffff;
       --border: #333333;
+      --card-bg: #111111;
     }
 
     body.light {
-      --bg: #ffffff;
+      --bg: #cccccc;
       --text: #000000;
-      --border: #cccccc;
+      --border: #aaaaaa;
+      --card-bg: #bbbbbb;
     }
 
     body {
       background: var(--bg);
       display: flex;
       flex-direction: column;
-      justify-content: center;
       align-items: center;
-      height: 100vh;
+      min-height: 100vh;
       font-family: monospace;
       color: var(--text);
-      gap: 12px;
       transition: background 0.2s, color 0.2s;
     }
+
+    #top-bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    /* When game is active, top-bar border merges into HUD —
+       achieved by removing top-bar's bottom border via a class */
+    body.in-game #top-bar {
+      border-bottom: none;
+    }
+
+    .top-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: monospace;
+      font-size: 10px;
+      padding: 4px 10px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .top-btn:hover { background: var(--text); color: var(--bg); }
 
     #menu {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 32px;
+      gap: 28px;
+      padding: 60px 20px 60px;
+      width: 100%;
+      max-width: 520px;
     }
-
     #menu h1 {
-      font-size: 28px;
-      color: var(--text);
-      letter-spacing: 4px;
+      font-size: 26px;
+      letter-spacing: 6px;
+      font-weight: 700;
     }
 
     .option-group {
@@ -49,17 +84,20 @@
       flex-direction: column;
       align-items: center;
       gap: 10px;
+      width: 100%;
     }
 
-    .option-group label {
-      font-size: 12px;
-      color: var(--text);
-      letter-spacing: 2px;
+    .option-group > label {
+      font-size: 10px;
+      opacity: 0.5;
+      letter-spacing: 3px;
     }
 
     .btn-row {
       display: flex;
-      gap: 8px;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center;
     }
 
     .opt-btn {
@@ -67,192 +105,386 @@
       border: 1px solid var(--border);
       color: var(--text);
       font-family: monospace;
-      font-size: 13px;
-      padding: 8px 16px;
+      font-size: 12px;
+      padding: 7px 14px;
       cursor: pointer;
       letter-spacing: 1px;
-      transition: border-color 0.1s, color 0.1s;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
     }
-
-    .opt-btn:hover { border-color: var(--text); color: var(--text); }
-    .opt-btn.selected { border-color: var(--text); color: var(--text); }
+    .opt-btn:hover { border-color: var(--text); }
+    .opt-btn.selected { border-color: var(--text); color: var(--text); background: transparent; }
+    .opt-btn:active { background: var(--text); color: var(--bg); }
 
     #start-btn {
       background: transparent;
       border: 1px solid var(--text);
       color: var(--text);
       font-family: monospace;
-      font-size: 15px;
-      padding: 12px 40px;
+      font-size: 14px;
+      padding: 12px 48px;
       cursor: pointer;
-      letter-spacing: 3px;
+      letter-spacing: 4px;
+      transition: background 0.15s, color 0.15s;
     }
-
     #start-btn:hover { background: var(--text); color: var(--bg); }
+    #start-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-    #hud {
-      display: none;
-      width: 100%;
-      max-width: 600px;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    #hud.visible { display: flex; }
-
-    .hud-btn {
-      background: transparent;
-      border: 1px solid var(--text);
-      color: var(--text);
-      font-family: monospace;
-      font-size: 12px;
-      padding: 4px 12px;
-      cursor: pointer;
-      letter-spacing: 1px;
-      transition: background 0.1s, color 0.1s;
-    }
-
-    .hud-btn:hover { background: var(--text); color: var(--bg); }
-
-    #player-indicator {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      letter-spacing: 2px;
-      color: var(--text);
-    }
-
-    #player-symbol-preview {
-      width: 20px;
-      height: 20px;
-      image-rendering: pixelated;
-    }
-
-    #turn-timer {
-      font-size: 12px;
-      letter-spacing: 2px;
-      color: var(--text);
-      min-width: 48px;
-      text-align: center;
-    }
-
-    .mode-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text);
-      font-family: monospace;
-      font-size: 11px;
-      padding: 4px 12px;
-      cursor: pointer;
-      letter-spacing: 1px;
-      transition: background 0.2s, color 0.2s, border-color 0.2s;
-    }
-
-    .mode-btn:hover { background: var(--text); color: var(--bg); }
-    .mode-btn:active { opacity: 0.7; }
-
+    /* ── SECTION VISIBILITY ── */
     #section-players,
     #section-go-first,
     #section-difficulty,
-    #section-custom,
-    #section-player-marks {
+    #section-marks,
+    #section-grid,
+    #section-n-in-a-row,
+    #section-missing,
+    #section-queue {
       display: none;
+      width: 100%;
     }
 
     #section-players.visible,
     #section-go-first.visible,
     #section-difficulty.visible,
-    #section-custom.visible,
-    #section-player-marks.visible {
+    #section-marks.visible,
+    #section-grid.visible,
+    #section-n-in-a-row.visible,
+    #section-missing.visible,
+    #section-queue.visible { display: flex; }
+
+    #section-grid, #section-n-in-a-row, #section-missing { flex-direction: column; align-items: center; gap: 10px; }
+    #section-queue { flex-direction: column; gap: 10px; }
+    #section-marks { flex-direction: column; align-items: center; gap: 10px; }
+
+    .mark-row {
       display: flex;
-    }
-
-    #section-custom {
-      flex-direction: column;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
+      font-size: 11px;
+      letter-spacing: 1px;
+      opacity: 0.7;
     }
 
-    #section-custom input[type="number"],
-    #section-custom textarea {
+    .mark-preview-cv {
+      width: 32px; height: 32px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      image-rendering: pixelated;
+      flex-shrink: 0;
+      transition: border-color 0.1s;
+    }
+    .mark-preview-cv:hover { border-color: var(--text); }
+
+    .num-input {
       background: transparent;
       border: 1px solid var(--border);
       color: var(--text);
       font-family: monospace;
       font-size: 13px;
       padding: 6px 10px;
-      width: 80px;
-      outline: none;
+      width: 72px;
       text-align: center;
+      outline: none;
+      -moz-appearance: textfield;
     }
+    .num-input:focus { border-color: var(--text); }
+    .num-input::-webkit-inner-spin-button,
+    .num-input::-webkit-outer-spin-button { -webkit-appearance: none; }
 
-    #section-custom textarea {
-      width: 200px;
-      height: 80px;
-      resize: vertical;
-      text-align: left;
-    }
-
-    #section-player-marks {
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .player-mark-row {
+    .input-row {
       display: flex;
       align-items: center;
-      gap: 12px;
-      font-size: 12px;
-      letter-spacing: 1px;
-      color: var(--text);
+      gap: 8px;
+      font-size: 11px;
+      opacity: 0.6;
     }
 
-    .mark-preview {
-      width: 30px;
-      height: 30px;
+    #missing-tiles-input {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: monospace;
+      font-size: 11px;
+      padding: 8px 10px;
+      width: 220px;
+      height: 60px;
+      resize: vertical;
+      outline: none;
+    }
+    #missing-tiles-input:focus { border-color: var(--text); }
+
+    /* ── QUEUE ── */
+    #section-queue { flex-direction: column; gap: 10px; }
+
+    #queue-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      padding: 0 2px;
+    }
+    #queue-header span { font-size: 10px; letter-spacing: 3px; opacity: 0.5; }
+    #queue-add-btns { display: flex; gap: 6px; }
+
+    #queue-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 400px;
+      overflow-y: auto;
+      width: 100%;
+      padding-right: 2px;
+      position: relative;
+    }
+
+    /* ── PLAYER CARD ── */
+    .player-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      user-select: none;
+      transition: border-color 0.15s;
+      width: 100%;
+    }
+
+    .player-card.dragging { opacity: 0.25; }
+
+    /* drop indicator: a shaded placeholder shown at insertion point */
+    .drop-placeholder {
+      border: 1px dashed var(--text);
+      opacity: 0.35;
+      height: 44px;
+      background: var(--text);
+      border-radius: 0;
+      pointer-events: none;
+    }
+
+    .card-top {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .drag-handle {
+      cursor: grab;
+      font-size: 13px;
+      opacity: 0.3;
+      padding: 2px 3px;
+      touch-action: none;
+      flex-shrink: 0;
+    }
+    .drag-handle:active { cursor: grabbing; opacity: 0.7; }
+
+    .card-name-input {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      font-family: monospace;
+      font-size: 12px;
+      letter-spacing: 1px;
+      width: 76px;
+      outline: none;
+      padding: 1px 0;
+    }
+    .card-name-input:focus { border-bottom-color: var(--text); }
+
+    .card-type-badge {
+      font-size: 9px;
+      letter-spacing: 2px;
+      opacity: 0.35;
+      margin-right: auto;
+    }
+
+    .card-glyph-preview {
+      width: 26px; height: 26px;
       border: 1px solid var(--border);
       cursor: pointer;
       image-rendering: pixelated;
-      transition: border-color 0.1s;
+      flex-shrink: 0;
+    }
+    .card-glyph-preview:hover { border-color: var(--text); }
+
+    .card-color-swatch {
+      width: 26px; height: 26px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .card-color-swatch input[type="color"] {
+      position: absolute;
+      inset: -4px;
+      width: calc(100% + 8px);
+      height: calc(100% + 8px);
+      opacity: 0;
+      cursor: pointer;
     }
 
-    .mark-preview:hover { border-color: var(--text); }
+    .card-remove {
+      background: transparent;
+      border: none;
+      color: var(--text);
+      font-family: monospace;
+      font-size: 16px;
+      cursor: pointer;
+      opacity: 0.25;
+      padding: 0 2px;
+      transition: opacity 0.1s;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .card-remove:hover { opacity: 1; }
 
+    .card-ai-options {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      padding-left: 22px;
+    }
+    .card-ai-options label { font-size: 9px; letter-spacing: 2px; opacity: 0.4; }
+
+    .ai-diff-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: monospace;
+      font-size: 9px;
+      padding: 2px 7px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: background 0.1s, color 0.1s;
+    }
+    .ai-diff-btn:hover { border-color: var(--text); }
+    .ai-diff-btn.selected { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+    .error-rate-input {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: monospace;
+      font-size: 10px;
+      width: 44px;
+      padding: 2px 5px;
+      text-align: center;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .error-rate-input::-webkit-inner-spin-button,
+    .error-rate-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+    /* drag ghost */
+    #drag-ghost {
+      display: none;
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      background: var(--card-bg);
+      border: 1px solid var(--text);
+      padding: 6px 10px;
+      font-family: monospace;
+      font-size: 11px;
+      letter-spacing: 1px;
+      color: var(--text);
+      opacity: 0.9;
+      white-space: nowrap;
+    }
+
+    #queue-validation {
+      font-size: 10px;
+      letter-spacing: 1px;
+      opacity: 0.5;
+      text-align: center;
+      min-height: 14px;
+      width: 100%;
+    }
+
+    /* ── HUD ── */
+    #hud {
+      display: none;
+      position: fixed;
+      top: 40px; left: 0; right: 0;
+      height: 44px;
+      background: var(--bg);
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      z-index: 99;
+      transition: background 0.2s;
+    }
+    #hud.visible { display: flex; }
+
+    .hud-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: monospace;
+      font-size: 10px;
+      padding: 4px 10px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .hud-btn:hover { background: var(--text); color: var(--bg); }
+
+    #player-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      letter-spacing: 2px;
+    }
+
+    #player-symbol-preview {
+      width: 22px; height: 22px;
+      image-rendering: pixelated;
+    }
+
+    #turn-timer {
+      font-size: 11px;
+      letter-spacing: 2px;
+      opacity: 0.5;
+      min-width: 48px;
+      text-align: center;
+    }
+
+    /* ── GAME AREA ── */
     #game-area {
       display: none;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      padding-top: 84px; /* top-bar 40px + hud 44px */
     }
-
-    #game-area.visible { display: block; }
+    #game-area.visible { display: flex; }
 
     #canvas-scroll {
       overflow: auto;
       max-width: 100vw;
-      max-height: calc(100vh - 120px);
+      max-height: calc(100vh - 84px);
       cursor: pointer;
     }
 
-    #game {
-      display: block;
-      image-rendering: pixelated;
-    }
+    #game { display: block; image-rendering: pixelated; }
 
     /* ── SYMBOL EDITOR ── */
     #symbol-editor-overlay {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.82);
       align-items: center;
       justify-content: center;
       z-index: 200;
       flex-direction: column;
-      gap: 20px;
+      gap: 16px;
     }
-
     body.light #symbol-editor-overlay { background: rgba(255,255,255,0.88); }
-
     #symbol-editor-overlay.visible { display: flex; }
 
     #symbol-editor-box {
@@ -262,19 +494,14 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 16px;
+      gap: 14px;
     }
-
-    #symbol-editor-box h2 {
-      font-size: 11px;
-      letter-spacing: 3px;
-      color: var(--text);
-    }
+    #symbol-editor-box h2 { font-size: 10px; letter-spacing: 3px; opacity: 0.5; }
 
     #pixel-grid {
       display: grid;
-      grid-template-columns: repeat(10, 22px);
-      grid-template-rows: repeat(10, 22px);
+      grid-template-columns: repeat(10, 26px);
+      grid-template-rows: repeat(10, 26px);
       gap: 1px;
       background: var(--border);
       border: 1px solid var(--border);
@@ -282,14 +509,8 @@
       user-select: none;
     }
 
-    .pixel-cell {
-      width: 22px;
-      height: 22px;
-      background: var(--bg);
-    }
-
+    .pixel-cell { width: 26px; height: 26px; background: var(--bg); }
     .pixel-cell.on { background: var(--text); }
-
     .editor-btn-row { display: flex; gap: 8px; }
 
     /* ── WIN OVERLAY ── */
@@ -297,16 +518,13 @@
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.82);
       align-items: center;
       justify-content: center;
       z-index: 300;
       flex-direction: column;
-      gap: 20px;
     }
-
     body.light #win-overlay { background: rgba(255,255,255,0.88); }
-
     #win-overlay.visible { display: flex; }
 
     #win-box {
@@ -316,40 +534,27 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 16px;
+      gap: 14px;
       text-align: center;
     }
-
-    #win-message {
-      font-size: 22px;
-      letter-spacing: 4px;
-      color: var(--text);
-    }
-
-    #win-sub {
-      font-size: 11px;
-      letter-spacing: 2px;
-      color: var(--text);
-      opacity: 0.6;
-    }
-
     #win-canvas { image-rendering: pixelated; }
-
-    .win-btn-row {
-      display: flex;
-      gap: 10px;
-      margin-top: 8px;
-    }
+    #win-message { font-size: 20px; letter-spacing: 4px; }
+    #win-sub { font-size: 10px; letter-spacing: 2px; opacity: 0.5; }
+    .win-btn-row { display: flex; gap: 10px; margin-top: 8px; }
   </style>
 </head>
 <body>
 
-  <button class="mode-btn" id="toggleMode">LIGHT MODE</button>
-  <button class="opt-btn" id="hub-btn">← Back To Hub</button>
+  <div id="top-bar">
+    <button class="top-btn" id="hub-btn">← HUB</button>
+    <span style="font-size:11px;letter-spacing:4px;opacity:0.5">CONNECT N</span>
+    <button class="top-btn" id="toggleMode">LIGHT</button>
+  </div>
 
   <div id="menu">
     <h1>CONNECT N</h1>
 
+    <!-- TYPE -->
     <div class="option-group">
       <label>TYPE</label>
       <div class="btn-row">
@@ -359,6 +564,7 @@
       </div>
     </div>
 
+    <!-- PRESET: PLAYERS (1p/2p) -->
     <div class="option-group" id="section-players">
       <label>PLAYERS</label>
       <div class="btn-row">
@@ -367,6 +573,7 @@
       </div>
     </div>
 
+    <!-- PRESET: GO FIRST -->
     <div class="option-group" id="section-go-first">
       <label>YOU GO</label>
       <div class="btn-row">
@@ -375,6 +582,7 @@
       </div>
     </div>
 
+    <!-- PRESET: DIFFICULTY -->
     <div class="option-group" id="section-difficulty">
       <label>DIFFICULTY</label>
       <div class="btn-row">
@@ -384,44 +592,70 @@
       </div>
     </div>
 
-    <div class="option-group" id="section-custom">
-      <label>N IN A ROW</label>
-      <input type="number" id="input-n-in-a-row" min="2" value="5" />
-      <label>GRID SIZE</label>
-      <div class="btn-row">
-        <input type="number" id="input-grid-w" min="2" value="15" />
-        <span>×</span>
-        <input type="number" id="input-grid-h" min="2" value="15" />
-      </div>
-      <label>N PLAYERS</label>
-      <input type="number" id="input-n-players" min="2" max="10" value="2" />
-      <label>MISSING TILES</label>
-      <textarea id="input-missing-tiles" placeholder="x,y per line"></textarea>
+    <!-- PRESET: PLAYER MARKS (non-Gomoku only) -->
+    <div class="option-group" id="section-marks">
+      <label>PLAYER MARKS</label>
+      <div id="marks-list"></div>
     </div>
 
-    <div id="section-player-marks">
-      <label style="font-size:11px;letter-spacing:2px;">PLAYER MARKS</label>
-      <div id="marks-list"></div>
+    <!-- CUSTOM: GRID SIZE -->
+    <div class="option-group" id="section-grid">
+      <label>GRID SIZE</label>
+      <div class="input-row">
+        <input class="num-input" type="number" id="input-grid-w" min="2" max="500" value="15" />
+        <span>×</span>
+        <input class="num-input" type="number" id="input-grid-h" min="2" max="500" value="15" />
+      </div>
+    </div>
+
+    <!-- CUSTOM: N IN A ROW -->
+    <div class="option-group" id="section-n-in-a-row">
+      <label>N IN A ROW</label>
+      <input class="num-input" type="number" id="input-n-in-a-row" min="2" max="500" value="5" />
+    </div>
+
+    <!-- CUSTOM: MISSING TILES -->
+    <div class="option-group" id="section-missing">
+      <label>MISSING TILES (x,y per line)</label>
+      <textarea id="missing-tiles-input" placeholder="3,4&#10;7,2&#10;..."></textarea>
+    </div>
+
+    <!-- CUSTOM: QUEUE -->
+    <div class="option-group" id="section-queue">
+      <div id="queue-header">
+        <span>PLAYERS</span>
+        <div id="queue-add-btns">
+          <button class="opt-btn" id="add-human-btn">+ HUMAN</button>
+          <button class="opt-btn" id="add-ai-btn">+ AI</button>
+        </div>
+      </div>
+      <div id="queue-list"></div>
+      <div id="queue-validation"></div>
     </div>
 
     <button id="start-btn">START</button>
   </div>
 
+  <!-- HUD -->
   <div id="hud">
     <button class="hud-btn" id="quit-btn">QUIT</button>
     <div id="player-indicator">
-      <canvas id="player-symbol-preview" width="20" height="20"></canvas>
-      <span id="player-label">PLAYER 1</span>
+      <canvas id="player-symbol-preview" width="22" height="22"></canvas>
+      <span id="player-label">P1</span>
     </div>
     <span id="turn-timer">00:00</span>
     <button class="hud-btn" id="reset-btn">RESET</button>
   </div>
 
+  <!-- GAME AREA -->
   <div id="game-area">
     <div id="canvas-scroll">
       <canvas id="game"></canvas>
     </div>
   </div>
+
+  <!-- DRAG GHOST -->
+  <div id="drag-ghost"></div>
 
   <!-- SYMBOL EDITOR -->
   <div id="symbol-editor-overlay">
@@ -429,6 +663,7 @@
       <h2>DRAW YOUR MARK</h2>
       <div id="pixel-grid"></div>
       <div class="editor-btn-row">
+        <button class="opt-btn" id="editor-reset">RESET</button>
         <button class="opt-btn" id="editor-clear">CLEAR</button>
         <button class="opt-btn" id="editor-save">SAVE</button>
       </div>
@@ -439,7 +674,7 @@
   <div id="win-overlay">
     <div id="win-box">
       <canvas id="win-canvas" width="60" height="60"></canvas>
-      <div id="win-message">PLAYER 1 WINS!</div>
+      <div id="win-message">P1 WINS!</div>
       <div id="win-sub">CONNECT 5 ACHIEVED</div>
       <div class="win-btn-row">
         <button class="opt-btn" id="win-reset-btn">PLAY AGAIN</button>
@@ -450,6 +685,7 @@
 
   <script>
     document.getElementById('hub-btn').addEventListener('click', () => {
+      savedQueue = null
       if (window.parent !== window) {
         window.parent.postMessage('returnToHub', '*')
       } else {
